@@ -242,9 +242,10 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 
 	// create vertices
 	XMFLOAT3 vertices[] = {
-		{-0.5f, -0.7f, 0.0f },
-		{ 0.0f,  0.7f, 0.0f },
-		{ 0.5f, -0.7f, 0.0f },
+		{-0.4f, -0.7f, 0.0f },
+		{-0.4f,  0.7f, 0.0f },
+		{ 0.4f, -0.7f, 0.0f },
+		{ 0.4f,  0.7f, 0.0f },
 	};
 
 	// create vertex buffer
@@ -290,6 +291,36 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 	vbView.BufferLocation = vertexBuffer->GetGPUVirtualAddress();
 	vbView.SizeInBytes = sizeof(vertices);
 	vbView.StrideInBytes = sizeof(vertices[0]);
+
+	// create indices
+	unsigned short indices[] = {
+		0,1,2,
+		2,1,3
+	};
+
+	ID3D12Resource* indexBuffer = nullptr;
+	resDesc.Width = sizeof(indices);
+
+	result = _dev->CreateCommittedResource(
+		&heapProp,
+		D3D12_HEAP_FLAG_NONE,
+		&resDesc,
+		D3D12_RESOURCE_STATE_GENERIC_READ,
+		nullptr,
+		IID_PPV_ARGS(&indexBuffer)
+	);
+
+	// indices buffer map
+	unsigned short* mappedIndex = nullptr;
+	indexBuffer->Map(0, nullptr, (void**)&mappedIndex);
+	std::copy(std::begin(indices), std::end(indices), mappedIndex);
+	indexBuffer->Unmap(0, nullptr);
+
+	// create index buffer view
+	D3D12_INDEX_BUFFER_VIEW idxView = {};
+	idxView.BufferLocation = indexBuffer->GetGPUVirtualAddress();
+	idxView.Format = DXGI_FORMAT_R16_UINT;
+	idxView.SizeInBytes = sizeof(indices);
 
 	// create shader object
 	ID3DBlob* vsBlob = nullptr;
@@ -513,7 +544,8 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 		_cmdList->SetComputeRootSignature(rootSignature);
 		_cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 		_cmdList->IASetVertexBuffers(0, 1, &vbView);
-		_cmdList->DrawInstanced(3, 1, 0, 0);
+		_cmdList->IASetIndexBuffer(&idxView);
+		_cmdList->DrawIndexedInstanced(sizeof(indices), 1, 0, 0, 0);
 
 		// swap barrier state
 		barrierDesc.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
