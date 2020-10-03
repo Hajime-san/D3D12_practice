@@ -6,13 +6,18 @@ use winapi::{
                   GetMessageW, TranslateMessage, DispatchMessageW, MSG,
                   WM_DESTROY, PostQuitMessage, DefWindowProcW, WS_OVERLAPPEDWINDOW },
         wingdi::{ GetStockObject, WHITE_BRUSH },
+        d3d12,
+        d3d12sdklayers,
+        d3dcommon,
     },
     shared::{
         windef::{ HWND, HBRUSH },
         minwindef::{ UINT, WPARAM, LPARAM, LRESULT },
+        winerror::{ S_OK },
+        guiddef::*,
     },
+    ctypes::c_void,
 };
-use winapi::um::{ d3d12, d3d12sdklayers, d3dcommon };
 use std::ptr;
 use std::mem;
 
@@ -31,6 +36,8 @@ fn main() {
             return;
         }
 
+        let mut dev: d3d12::ID3D12Device;
+
 
         // initialize Direct3D device
         let levels: [d3dcommon::D3D_FEATURE_LEVEL; 4] = [
@@ -40,14 +47,42 @@ fn main() {
             d3dcommon::D3D_FEATURE_LEVEL_11_0
         ];
 
-        println!("{:?}", levels);
+        let mut feature_level : d3dcommon::D3D_FEATURE_LEVEL = 0;
+
+        const REFGUID: GUID = GUID {
+            Data1: 0x189819f1,
+            Data2: 0x1db6,
+            Data3: 0x4b57,
+            Data4: [ 0xbe, 0x54, 0x18, 0x21, 0x33, 0x9b, 0x85, 0xf7 ],
+        };
+
+        let mut pp_device = ptr::null_mut::<d3d12::ID3D12Device>();
+
+        for lv in levels.iter() {
+
+            if d3d12::D3D12CreateDevice(
+                ptr::null_mut(),
+                *lv,
+                &REFGUID,
+                &mut pp_device as *mut *mut d3d12::ID3D12Device as *mut *mut c_void
+                )
+                 == S_OK {
+                println!("{}", "foooooo");
+
+                feature_level = *lv;
+			    break;
+            }
+        }
+
+        println!("{}", feature_level);
+
 
 
         ShowWindow(hwnd, SW_NORMAL);
         UpdateWindow(hwnd);
 
 
-        let mut msg = mem::uninitialized::<MSG>();
+        let mut msg = mem::MaybeUninit::uninit().assume_init();
         loop {
             if GetMessageW(&mut msg, ptr::null_mut(), 0, 0) == 0 {
                 return;
