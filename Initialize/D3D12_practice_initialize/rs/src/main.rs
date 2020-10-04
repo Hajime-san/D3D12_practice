@@ -10,13 +10,14 @@ use winapi::{
         d3d12sdklayers::*,
         d3dcommon::*,
         unknwnbase::{ IUnknown },
+        winbase::{ INFINITE },
         synchapi::{ CreateEventW, WaitForSingleObject },
         handleapi::{ CloseHandle },
     },
     shared::{
         windef::{ HWND, HBRUSH },
         minwindef::{ UINT, WPARAM, LPARAM, LRESULT, FLOAT },
-        winerror::{ S_OK, DXGI_ERROR_NOT_FOUND },
+        winerror::{ S_OK, DXGI_ERROR_NOT_FOUND, SUCCEEDED },
         ntdef::{ LUID, WCHAR },
         guiddef::*,
         dxgi::*,
@@ -35,6 +36,7 @@ use std::mem;
 
 const WINDOW_WIDTH: i32 = 1280;
 const WINDOW_HEIGHT: i32 = 720;
+const DEBUG: bool = true;
 
 fn main() {
     unsafe {
@@ -48,9 +50,11 @@ fn main() {
             return;
         }
 
+
         let mut d3d12_device = ptr::null_mut::<ID3D12Device>();
         let mut dxgi_factory = ptr::null_mut::<IDXGIFactory6>();
         let mut swapchain = ptr::null_mut(); // IDXGISwapChain4
+        let mut debug_interface = ptr::null_mut::<ID3D12DebugDevice>();
 
 
         // initialize Direct3D device
@@ -78,7 +82,7 @@ fn main() {
         }
 
         // return value 0(HRESULT->S_OK) is ok
-        let mut result = CreateDXGIFactory(&IID_IDXGIFactory, &mut dxgi_factory as *mut *mut IDXGIFactory6 as *mut *mut c_void);
+        let mut result = CreateDXGIFactory1(&IID_IDXGIFactory, &mut dxgi_factory as *mut *mut IDXGIFactory6 as *mut *mut c_void);
 
         // iterate adapter to use
         let mut tmp_adapter = ptr::null_mut::<IDXGIAdapter>();
@@ -106,8 +110,7 @@ fn main() {
             tmp_adapter.as_ref().unwrap().GetDesc(&mut p_desc);
 
             if p_desc.Description.to_vec() != encode("NVIDIA") {
-                // println!("{:?}", encode("NVIDIA"));
-                // println!("{:?}", p_desc.Description.to_vec());
+
                 tmp_adapter = tmp_adapter;
 
                 break;
@@ -216,14 +219,21 @@ fn main() {
         result = d3d12_device.as_ref().unwrap().CreateFence(0, D3D12_FENCE_FLAG_NONE, &IID_ID3D12Fence, &mut fence as *mut *mut ID3D12Fence as *mut *mut c_void);
 
 
-        println!("{:?}", result);
+        // enable debug layer
+        if SUCCEEDED(d3d12_device.as_ref().unwrap().QueryInterface(
+            &IID_ID3D12InfoQueue,
+            &mut debug_interface as *mut *mut ID3D12DebugDevice as *mut *mut c_void)) && DEBUG {
 
+            debug_interface.as_ref().unwrap().ReportLiveDeviceObjects(D3D12_RLDO_DETAIL | D3D12_RLDO_IGNORE_INTERNAL);
+            debug_interface.as_ref().unwrap().Release();
+        }
 
         ShowWindow(hwnd, SW_NORMAL);
         UpdateWindow(hwnd);
 
 
         let mut current_frame = 0;
+        let clear_color: [FLOAT; 4] = [ 1.0, 1.0, 0.0, 1.0 ];
 
         let mut msg = mem::MaybeUninit::uninit().assume_init();
         loop {
@@ -271,17 +281,20 @@ fn main() {
             );
 
             // clear render target
-            let clear_color: [FLOAT; 4] = [ 1.0, 1.0, 0.0, 1.0 ];
-
             cmd_list.as_ref().unwrap().ClearRenderTargetView(rtv_heap_start, &clear_color, 0, std::ptr::null_mut());
+
+            // swap barrier state
+            barrier_desc.u.Transition_mut().StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
+            barrier_desc.u.Transition_mut().StateAfter = D3D12_RESOURCE_STATE_PRESENT;
+            cmd_list.as_ref().unwrap().ResourceBarrier(1, &barrier_desc);
 
             // run commands
             cmd_list.as_ref().unwrap().Close();
 
             // ID3D12CommandList* cmdLists[] = { _cmdList };
-            // let cmd_list_array = [ cmd_list.cast::<ID3D12CommandList>() ];
+            let cmd_list_array = [ cmd_list.cast::<ID3D12CommandList>() ];
 
-            cmd_queue.as_ref().unwrap().ExecuteCommandLists(1, &cmd_list.cast::<ID3D12CommandList>());
+            cmd_queue.as_ref().unwrap().ExecuteCommandLists(1, &cmd_list_array[0]);
 
             cmd_queue.as_ref().unwrap().Signal(fence, current_frame);
 
@@ -291,7 +304,7 @@ fn main() {
 
                 fence.as_ref().unwrap().SetEventOnCompletion(current_frame, event);
 
-                WaitForSingleObject(event, 90000000);
+                WaitForSingleObject(event, INFINITE);
 
                 CloseHandle(event);
             }

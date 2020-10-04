@@ -8,7 +8,7 @@ edition = "2018"
 
 [dependencies.winapi]
 version = "0.3.9"
-features = ["dxgi", "dxgi1_2", "dxgi1_3", "dxgi1_4", "dxgi1_5", "dxgi1_6", "dxgiformat", "dxgitype", "d3d12", "d3d12sdklayers", "d3dcommon", "d3dcompiler", "synchapi", "winerror", "winuser", "guiddef", "wingdi", "windef", "minwindef", "ntdef", "unknwnbase", "synchapi", "handleapi"]
+features = [ "dxgi", "dxgi1_2", "dxgi1_3", "dxgi1_4", "dxgi1_5", "dxgi1_6", "dxgiformat", "dxgitype", "d3d12", "d3d12sdklayers", "d3dcommon", "d3dcompiler", "synchapi", "winerror", "winuser", "guiddef", "wingdi", "windef", "winbase", "minwindef", "ntdef", "unknwnbase", "synchapi", "handleapi"]
 kernel32-sys = "0.2.2"
 user32-sys = "0.2.0"
 d3d12-sys = "0.2.0"
