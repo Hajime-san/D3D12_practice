@@ -14,6 +14,7 @@ use winapi::{
         windef::{ HWND, HBRUSH },
         minwindef::{ UINT, WPARAM, LPARAM, LRESULT },
         winerror::{ S_OK, DXGI_ERROR_NOT_FOUND },
+        ntdef::{ LUID, WCHAR },
         guiddef::*,
         dxgi::*,
         dxgi1_2::*,
@@ -74,21 +75,42 @@ fn main() {
         let result = CreateDXGIFactory(&IID_IDXGIFactory, &mut dxgi_factory as *mut *mut IDXGIFactory4 as *mut *mut c_void);
 
         // iterate adapter to use
-
-        let mut adapters: Vec<IDXGIAdapter> = vec![];
-
-        let mut  tmp_adapter = ptr::null_mut::<IDXGIAdapter>();
+        let mut tmp_adapter = ptr::null_mut::<IDXGIAdapter>();
 
         let mut i = 0;
 
         while IDXGIFactory::EnumAdapters(&*dxgi_factory, i, &mut tmp_adapter as *mut *mut IDXGIAdapter) != DXGI_ERROR_NOT_FOUND {
             i += 1;
 
-            let p_desc = ptr::null_mut::<DXGI_ADAPTER_DESC>();
+            let mut p_desc = DXGI_ADAPTER_DESC {
+                Description: [0; 128],
+                VendorId: 0,
+                DeviceId: 0,
+                SubSysId: 0,
+                Revision: 0,
+                DedicatedVideoMemory: 0,
+                DedicatedSystemMemory: 0,
+                SharedSystemMemory: 0,
+                AdapterLuid: LUID {
+                    LowPart: 0,
+                    HighPart: 0,
+                },
+            };
 
-            IDXGIAdapter::GetDesc(&*tmp_adapter, p_desc);
+            IDXGIAdapter::GetDesc(&*tmp_adapter, &mut p_desc);
+
+            if p_desc.Description.to_vec() != encode("NVIDIA") {
+                // println!("{:?}", encode("NVIDIA"));
+                // println!("{:?}", p_desc.Description.to_vec());
+                tmp_adapter = tmp_adapter;
+
+                break;
+            }
 
         }
+
+        println!("{:?}", &tmp_adapter);
+
 
 
         ShowWindow(hwnd, SW_NORMAL);
@@ -108,12 +130,6 @@ fn main() {
 
 fn encode(source: &str) -> Vec<u16> {
     source.encode_utf16().chain(Some(0)).collect()
-}
-
-fn to_wide_chars(s: &str) -> Vec<u16> {
-    use std::ffi::OsStr;
-    use std::os::windows::ffi::OsStrExt;
-    OsStr::new(s).encode_wide().chain(Some(0).into_iter()).collect::<Vec<_>>()
 }
 
 unsafe fn register_wndclass(class_name: &[u16]) -> bool {
