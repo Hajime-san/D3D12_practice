@@ -9,6 +9,7 @@ use winapi::{
         d3d12::*,
         d3d12sdklayers::*,
         d3dcommon::*,
+        unknwnbase::{ IUnknown },
     },
     shared::{
         windef::{ HWND, HBRUSH },
@@ -20,6 +21,8 @@ use winapi::{
         dxgi1_2::*,
         dxgi1_3::*,
         dxgi1_4::*,
+        dxgi1_5::*,
+        dxgi1_6::*,
         dxgiformat::*,
         dxgitype::*,
     },
@@ -44,7 +47,8 @@ fn main() {
         }
 
         let mut device = ptr::null_mut::<ID3D12Device>();
-        let mut dxgi_factory = ptr::null_mut::<IDXGIFactory4>();
+        let mut dxgi_factory = ptr::null_mut::<IDXGIFactory6>();
+        let mut swapchain = ptr::null_mut::<IDXGISwapChain1>();
 
 
         // initialize Direct3D device
@@ -71,11 +75,11 @@ fn main() {
             }
         }
 
-        // return value 0 is S_OK
-        let result = CreateDXGIFactory(&IID_IDXGIFactory, &mut dxgi_factory as *mut *mut IDXGIFactory4 as *mut *mut c_void);
+        // return value 0(HRESULT->S_OK) is ok
+        let mut result = CreateDXGIFactory(&IID_IDXGIFactory, &mut dxgi_factory as *mut *mut IDXGIFactory6 as *mut *mut c_void);
 
         // iterate adapter to use
-        let mut tmp_adapter = ptr::null_mut::<IDXGIAdapter>();
+        let mut tmp_adapter = ptr::null_mut();
 
         let mut i = 0;
 
@@ -109,7 +113,71 @@ fn main() {
 
         }
 
-        println!("{:?}", &tmp_adapter);
+        // create command list, allocator
+        let mut cmd_allocator = ptr::null_mut();
+        let mut cmd_list = ptr::null_mut();
+
+        result = device.as_ref().unwrap().CreateCommandAllocator(
+            D3D12_COMMAND_LIST_TYPE_DIRECT,
+            &IID_ID3D12CommandAllocator,
+            &mut cmd_allocator as *mut *mut ID3D12CommandAllocator as *mut *mut c_void
+        );
+
+        result = device.as_ref().unwrap().CreateCommandList(
+            0,
+            D3D12_COMMAND_LIST_TYPE_DIRECT,
+            cmd_allocator,
+            ptr::null_mut(),
+            &IID_ID3D12GraphicsCommandList,
+            &mut cmd_list as *mut *mut ID3D12GraphicsCommandList as *mut *mut c_void
+        );
+
+        // create commnad queue
+
+        let mut cmd_queue = ptr::null_mut::<ID3D12CommandQueue>();
+
+        let mut cmd_queue_desc = D3D12_COMMAND_QUEUE_DESC {
+            Flags : D3D12_COMMAND_QUEUE_FLAG_NONE,
+            NodeMask : 0,
+            Priority : D3D12_COMMAND_QUEUE_PRIORITY_NORMAL as i32,
+            Type : D3D12_COMMAND_LIST_TYPE_DIRECT,
+        };
+
+        result = device.as_ref().unwrap().CreateCommandQueue(
+            &mut cmd_queue_desc,
+            &IID_ID3D12CommandQueue,
+            &mut cmd_queue as *mut *mut ID3D12CommandQueue as *mut *mut c_void
+        );
+
+        // create swapchain
+        let swapchain_desc = DXGI_SWAP_CHAIN_DESC1 {
+            Width : WINDOW_WIDTH as u32,
+            Height : WINDOW_HEIGHT as u32,
+            Format : DXGI_FORMAT_R8G8B8A8_UNORM,
+            Stereo : 0,
+            SampleDesc: DXGI_SAMPLE_DESC {
+                Count : 1,
+                Quality : 0,
+            },
+            BufferUsage : DXGI_USAGE_BACK_BUFFER,
+            BufferCount : 2,
+            Scaling : DXGI_SCALING_STRETCH,
+            SwapEffect : DXGI_SWAP_EFFECT_FLIP_DISCARD,
+            AlphaMode : DXGI_ALPHA_MODE_UNSPECIFIED,
+            Flags : DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH,
+        };
+
+        // function CreateSwapChainForHwnd 1st argument pDevice is command queue object in IDXGIFactory6
+        result = dxgi_factory.as_ref().unwrap().CreateSwapChainForHwnd(
+            cmd_queue as *mut IUnknown,
+            hwnd,
+            &swapchain_desc,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            &mut swapchain
+        );
+
+        println!("{:?}", result);
 
 
 
