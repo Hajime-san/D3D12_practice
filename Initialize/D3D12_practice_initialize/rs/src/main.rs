@@ -31,12 +31,16 @@ use winapi::{
     },
     ctypes::c_void,
 };
+
 use std::ptr;
 use std::mem;
 
 const WINDOW_WIDTH: i32 = 1280;
 const WINDOW_HEIGHT: i32 = 720;
 const DEBUG: bool = true;
+
+type XMFLOAT3 = [[f64; 3]; 4];
+type INDICES = [u32; 6];
 
 fn main() {
     unsafe {
@@ -217,6 +221,104 @@ fn main() {
         let mut fence = std::ptr::null_mut::<ID3D12Fence>();
 
         result = d3d12_device.as_ref().unwrap().CreateFence(0, D3D12_FENCE_FLAG_NONE, &IID_ID3D12Fence, &mut fence as *mut *mut ID3D12Fence as *mut *mut c_void);
+
+
+        // create vertices
+        let mut vertices: XMFLOAT3 = [
+            [-0.4, -0.7, 0.0 ],
+            [-0.4,  0.7, 0.0 ],
+            [ 0.4, -0.7, 0.0 ],
+            [ 0.4,  0.7, 0.0 ],
+        ];
+
+        // create vertex buffer
+
+        // settings of vertex heap
+        let vertex_buffer_heap_prop = D3D12_HEAP_PROPERTIES {
+            Type : D3D12_HEAP_TYPE_UPLOAD,
+            CPUPageProperty : D3D12_CPU_PAGE_PROPERTY_UNKNOWN,
+            MemoryPoolPreference : D3D12_MEMORY_POOL_UNKNOWN,
+            CreationNodeMask: 1,
+            VisibleNodeMask: 1,
+        };
+
+        // vertex buffer object
+        let mut vertex_buffer_resource_desc = D3D12_RESOURCE_DESC {
+            Dimension : D3D12_RESOURCE_DIMENSION_BUFFER,
+            Alignment: 0,
+            Width : std::mem::size_of::<XMFLOAT3>() as u64,
+            Height : 1,
+            DepthOrArraySize : 1,
+            MipLevels : 1,
+            Format : DXGI_FORMAT_UNKNOWN,
+            SampleDesc: DXGI_SAMPLE_DESC {
+                Count : 1,
+                Quality: 0,
+            },
+            Flags : D3D12_RESOURCE_FLAG_NONE,
+            Layout : D3D12_TEXTURE_LAYOUT_ROW_MAJOR,
+        };
+
+        let mut vertex_buffer = std::ptr::null_mut::<ID3D12Resource>();
+
+        result = d3d12_device.as_ref().unwrap().CreateCommittedResource(
+            &vertex_buffer_heap_prop,
+            D3D12_HEAP_FLAG_NONE,
+            &vertex_buffer_resource_desc,
+            D3D12_RESOURCE_STATE_GENERIC_READ,
+            std::ptr::null_mut(),
+            &IID_ID3D12Resource,
+            &mut vertex_buffer as *mut *mut ID3D12Resource as *mut *mut c_void
+        );
+
+        // vertex buffer map
+        let mut vertex_buffer_map = std::ptr::null_mut::<XMFLOAT3>();
+
+        result = vertex_buffer.as_ref().unwrap().Map(0, std::ptr::null_mut(), &mut vertex_buffer_map as *mut *mut XMFLOAT3 as *mut *mut c_void);
+        vertex_buffer_map.copy_from_nonoverlapping(&mut vertices, vertices.len() );
+        vertex_buffer.as_ref().unwrap().Unmap(0, std::ptr::null_mut() );
+
+
+        // create vertex buffer view
+        let vertex_buffer_view = D3D12_VERTEX_BUFFER_VIEW {
+            BufferLocation : vertex_buffer.as_ref().unwrap().GetGPUVirtualAddress(),
+            // SizeInBytes : vertices.len() as u32,
+            // StrideInBytes : vertices[0].len() as u32,
+            SizeInBytes : std::mem::size_of::<XMFLOAT3>() as u32,
+            StrideInBytes : std::mem::size_of::<f64>() as u32,
+        };
+
+        // create indices
+        let mut indices: INDICES = [
+            0, 1, 2,
+            2, 1, 3
+        ];
+
+        let mut index_buffer = std::ptr::null_mut::<ID3D12Resource>();
+        vertex_buffer_resource_desc.Width = std::mem::size_of::<INDICES>() as u64;
+
+        result = d3d12_device.as_ref().unwrap().CreateCommittedResource(
+            &vertex_buffer_heap_prop,
+            D3D12_HEAP_FLAG_NONE,
+            &vertex_buffer_resource_desc,
+            D3D12_RESOURCE_STATE_GENERIC_READ,
+            std::ptr::null_mut(),
+            &IID_ID3D12Resource,
+            &mut index_buffer as *mut *mut ID3D12Resource as *mut *mut c_void
+        );
+
+        // indices buffer map
+        let mut index_map = std::ptr::null_mut::<INDICES>();
+        index_buffer.as_ref().unwrap().Map(0, std::ptr::null_mut(), &mut index_map as *mut *mut INDICES as *mut *mut c_void);
+        index_map.copy_from_nonoverlapping(&mut indices, indices.len() );
+        index_buffer.as_ref().unwrap().Unmap(0, std::ptr::null_mut() );
+
+        // create index buffer view
+        let mut index_buffer_view = D3D12_INDEX_BUFFER_VIEW {
+            BufferLocation : index_buffer.as_ref().unwrap().GetGPUVirtualAddress(),
+            Format : DXGI_FORMAT_R16_UINT,
+            SizeInBytes : std::mem::size_of::<INDICES>() as u32,
+        };
 
 
         // enable debug layer
