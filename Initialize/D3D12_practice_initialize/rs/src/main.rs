@@ -9,6 +9,7 @@ use winapi::{
         d3d12::*,
         d3d12sdklayers::*,
         d3dcommon::*,
+        d3dcompiler::*,
         unknwnbase::{ IUnknown },
         winbase::{ INFINITE },
         synchapi::{ CreateEventW, WaitForSingleObject },
@@ -17,7 +18,7 @@ use winapi::{
     shared::{
         windef::{ HWND, HBRUSH },
         minwindef::{ UINT, WPARAM, LPARAM, LRESULT, FLOAT },
-        winerror::{ S_OK, DXGI_ERROR_NOT_FOUND, SUCCEEDED },
+        winerror::{ S_OK, DXGI_ERROR_NOT_FOUND, SUCCEEDED, FAILED, HRESULT_FROM_WIN32, ERROR_FILE_NOT_FOUND, ERROR_PATH_NOT_FOUND },
         ntdef::{ LUID, WCHAR },
         guiddef::*,
         dxgi::*,
@@ -34,6 +35,10 @@ use winapi::{
 
 use std::ptr;
 use std::mem;
+use std::str;
+use std::path::{ Path, PathBuf };
+use std::ffi::CString;
+use std::env;
 
 const WINDOW_WIDTH: i32 = 1280;
 const WINDOW_HEIGHT: i32 = 720;
@@ -41,6 +46,11 @@ const DEBUG: bool = true;
 
 type XMFLOAT3 = [[f64; 3]; 4];
 type INDICES = [u32; 6];
+
+enum BOOL {
+    FALSE = 0,
+    TRUE = 1,
+}
 
 fn main() {
     unsafe {
@@ -54,11 +64,39 @@ fn main() {
             return;
         }
 
+        // return value 0(HRESULT->S_OK) is ok
+        let mut result = -1;
 
         let mut d3d12_device = ptr::null_mut::<ID3D12Device>();
         let mut dxgi_factory = ptr::null_mut::<IDXGIFactory6>();
         let mut swapchain = ptr::null_mut(); // IDXGISwapChain4
-        let mut debug_interface = ptr::null_mut::<ID3D12DebugDevice>();
+        let mut debug_interface = ptr::null_mut::<ID3D12Debug>();
+
+
+        if DEBUG {
+            result = CreateDXGIFactory2(
+                DXGI_CREATE_FACTORY_DEBUG,
+                &IID_IDXGIFactory4,
+                &mut dxgi_factory as *mut *mut IDXGIFactory6 as *mut *mut c_void,
+            );
+        } else {
+            result = CreateDXGIFactory1(
+                &IID_IDXGIFactory1,
+                &mut dxgi_factory as *mut *mut IDXGIFactory6 as *mut *mut c_void
+            );
+        }
+
+
+        if SUCCEEDED(D3D12GetDebugInterface(
+            &IID_ID3D12Debug,
+            &mut debug_interface as *mut *mut ID3D12Debug as *mut *mut c_void)) && DEBUG {
+            debug_interface.as_ref().unwrap().EnableDebugLayer();
+            // debug_interface.as_ref().unwrap().ReportLiveDeviceObjects(D3D12_RLDO_DETAIL | D3D12_RLDO_IGNORE_INTERNAL);
+            // debug_interface.as_ref().unwrap().Release();
+        } else {
+            println!("{:?}", "barbar");
+
+        }
 
 
         // initialize Direct3D device
@@ -85,8 +123,6 @@ fn main() {
             }
         }
 
-        // return value 0(HRESULT->S_OK) is ok
-        let mut result = CreateDXGIFactory1(&IID_IDXGIFactory, &mut dxgi_factory as *mut *mut IDXGIFactory6 as *mut *mut c_void);
 
         // iterate adapter to use
         let mut tmp_adapter = ptr::null_mut::<IDXGIAdapter>();
@@ -224,7 +260,7 @@ fn main() {
 
 
         // create vertices
-        let mut vertices: XMFLOAT3 = [
+        let vertices: XMFLOAT3 = [
             [-0.4, -0.7, 0.0 ],
             [-0.4,  0.7, 0.0 ],
             [ 0.4, -0.7, 0.0 ],
@@ -275,7 +311,7 @@ fn main() {
         let mut vertex_buffer_map = std::ptr::null_mut::<XMFLOAT3>();
 
         result = vertex_buffer.as_ref().unwrap().Map(0, std::ptr::null_mut(), &mut vertex_buffer_map as *mut *mut XMFLOAT3 as *mut *mut c_void);
-        vertex_buffer_map.copy_from_nonoverlapping(&mut vertices, vertices.len() );
+        vertex_buffer_map.copy_from_nonoverlapping(&vertices, vertices.len() );
         vertex_buffer.as_ref().unwrap().Unmap(0, std::ptr::null_mut() );
 
 
@@ -289,7 +325,7 @@ fn main() {
         };
 
         // create indices
-        let mut indices: INDICES = [
+        let indices: INDICES = [
             0, 1, 2,
             2, 1, 3
         ];
@@ -310,7 +346,7 @@ fn main() {
         // indices buffer map
         let mut index_map = std::ptr::null_mut::<INDICES>();
         index_buffer.as_ref().unwrap().Map(0, std::ptr::null_mut(), &mut index_map as *mut *mut INDICES as *mut *mut c_void);
-        index_map.copy_from_nonoverlapping(&mut indices, indices.len() );
+        index_map.copy_from_nonoverlapping(&indices, indices.len() );
         index_buffer.as_ref().unwrap().Unmap(0, std::ptr::null_mut() );
 
         // create index buffer view
@@ -320,15 +356,173 @@ fn main() {
             SizeInBytes : std::mem::size_of::<INDICES>() as u32,
         };
 
+        // create shader object
+        let mut vertex_shader_blob = std::ptr::null_mut::<ID3DBlob>();
+        let mut pixel_shader_blob = std::ptr::null_mut::<ID3DBlob>();
+        let mut shader_error_blob = std::ptr::null_mut::<ID3DBlob>();
+
+        result = D3DCompileFromFile(
+            get_relative_file_path_to_wide_str("shaders\\VertexShader.hlsl").as_ptr() as *const u16,
+            std::ptr::null_mut(),
+            D3D_COMPILE_STANDARD_FILE_INCLUDE,
+            CString::new("BasicVS").unwrap().into_raw(),
+            CString::new("vs_5_0").unwrap().into_raw(),
+            D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION,
+            0,
+            &mut vertex_shader_blob,
+            &mut shader_error_blob
+        );
+
+        result = D3DCompileFromFile(
+            get_relative_file_path_to_wide_str("shaders\\PixelShader.hlsl").as_ptr() as *const u16,
+            std::ptr::null_mut(),
+            D3D_COMPILE_STANDARD_FILE_INCLUDE,
+            CString::new("BasicPS").unwrap().into_raw(),
+            CString::new("ps_5_0").unwrap().into_raw(),
+            D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION,
+            0,
+            &mut pixel_shader_blob,
+            &mut shader_error_blob
+        );
+
+
+        // notify compilation error
+        if FAILED(result) {
+            const FILE_NOT_FOUND: i32 = ERROR_FILE_NOT_FOUND as i32;
+            const PATH_NOT_FOUND: i32 = ERROR_PATH_NOT_FOUND as i32;
+            match result {
+                FILE_NOT_FOUND => println!("{:}", "file not found"),
+                PATH_NOT_FOUND => println!("{:}", "path not found"),
+                _ => {
+                    // TODO
+                }
+            }
+        }
+
+        // vertex layout
+        let input_element: [D3D12_INPUT_ELEMENT_DESC; 1] = [
+            D3D12_INPUT_ELEMENT_DESC {
+                SemanticName: CString::new("POSITION").unwrap().into_raw(),
+                SemanticIndex: 0,
+                Format: DXGI_FORMAT_R32G32B32_FLOAT,
+                InputSlot: 0,
+                AlignedByteOffset: D3D12_APPEND_ALIGNED_ELEMENT,
+                InputSlotClass: D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,
+                InstanceDataStepRate: 0,
+            }
+        ];
+
+        // create graphics pipeline
+        let mut gr_pipeline: D3D12_GRAPHICS_PIPELINE_STATE_DESC = mem::zeroed();
+
+        // set shader
+        gr_pipeline.pRootSignature = std::ptr::null_mut();
+        gr_pipeline.VS.pShaderBytecode = vertex_shader_blob.as_ref().unwrap().GetBufferPointer();
+        gr_pipeline.VS.BytecodeLength = vertex_shader_blob.as_ref().unwrap().GetBufferSize();
+        gr_pipeline.PS.pShaderBytecode = pixel_shader_blob.as_ref().unwrap().GetBufferPointer();
+        gr_pipeline.PS.BytecodeLength = pixel_shader_blob.as_ref().unwrap().GetBufferSize();
+
+        // sample mask
+        gr_pipeline.SampleMask = D3D12_DEFAULT_SAMPLE_MASK;
+
+        // culling, filling
+        gr_pipeline.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
+        gr_pipeline.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;
+        gr_pipeline.RasterizerState.DepthClipEnable = BOOL::TRUE as i32;
+
+        // blend mode
+        gr_pipeline.BlendState.AlphaToCoverageEnable = BOOL::FALSE as i32;
+        gr_pipeline.BlendState.IndependentBlendEnable = BOOL::FALSE as i32;
+
+        // render target blend settings
+        let mut render_target_blend_desc: D3D12_RENDER_TARGET_BLEND_DESC = mem::zeroed();
+        render_target_blend_desc.BlendEnable = BOOL::FALSE as i32;
+        render_target_blend_desc.LogicOpEnable = BOOL::FALSE as i32;
+        render_target_blend_desc.RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL as u8;
+
+        gr_pipeline.BlendState.RenderTarget[0] = render_target_blend_desc;
+
+        // bind input layout
+        gr_pipeline.InputLayout.pInputElementDescs = &input_element[0];
+        gr_pipeline.InputLayout.NumElements = input_element.len() as u32;
+
+        // way to express triangle
+        gr_pipeline.IBStripCutValue = D3D12_INDEX_BUFFER_STRIP_CUT_VALUE_DISABLED;
+
+        // primitive topology setting
+        gr_pipeline.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+
+        // render target settings
+        gr_pipeline.NumRenderTargets = 1;
+        gr_pipeline.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+
+        // anti aliasing
+        gr_pipeline.RasterizerState.MultisampleEnable = BOOL::FALSE as i32;
+        gr_pipeline.SampleDesc.Count = 1;
+        gr_pipeline.SampleDesc.Quality = 0;
+
+
+        // create root signature
+        let mut root_signature = std::ptr::null_mut::<ID3D12RootSignature>();
+
+        let mut root_signature_desc: D3D12_ROOT_SIGNATURE_DESC = mem::zeroed();
+        root_signature_desc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
+
+        // create root signature binary
+        let mut root_signature_blob = std::ptr::null_mut::<ID3DBlob>();
+
+        result = D3D12SerializeRootSignature(
+            &root_signature_desc,
+            D3D_ROOT_SIGNATURE_VERSION_1_0,
+            &mut root_signature_blob,
+            &mut shader_error_blob
+        );
+
+        result = d3d12_device.as_ref().unwrap().CreateRootSignature(
+            0,
+            root_signature_blob.as_ref().unwrap().GetBufferPointer(),
+            root_signature_blob.as_ref().unwrap().GetBufferSize(),
+            &IID_ID3D12RootSignature,
+            &mut root_signature as *mut *mut ID3D12RootSignature as *mut *mut c_void
+        );
+
+        root_signature_blob.as_ref().unwrap().Release();
+
+        gr_pipeline.pRootSignature = root_signature;
+
+        // create grahphics pipeline state object
+        let mut pipeline_state = std::ptr::null_mut::<ID3D12PipelineState>();
+
+        result = d3d12_device.as_ref().unwrap().CreateGraphicsPipelineState(
+            &gr_pipeline,
+            &IID_ID3D12PipelineState,
+            &mut pipeline_state as *mut *mut ID3D12PipelineState as *mut *mut c_void
+        );
+
+        // viewport setting
+        let mut viewport: D3D12_VIEWPORT = mem::zeroed();
+        viewport.Width = WINDOW_WIDTH as f32;
+        viewport.Height = WINDOW_HEIGHT as f32;
+        viewport.TopLeftX = 0.0;
+        viewport.TopLeftY = 0.0;
+        viewport.MaxDepth = 1.0;
+        viewport.MinDepth = 0.0;
+
+        // scissor rectangle setting
+        let mut scissor_rect: D3D12_RECT = mem::zeroed();
+        scissor_rect.top = 0;
+        scissor_rect.left = 0;
+        scissor_rect.right = scissor_rect.left + WINDOW_WIDTH;
+        scissor_rect.bottom = scissor_rect.top + WINDOW_HEIGHT;
+
 
         // enable debug layer
-        if SUCCEEDED(d3d12_device.as_ref().unwrap().QueryInterface(
-            &IID_ID3D12InfoQueue,
-            &mut debug_interface as *mut *mut ID3D12DebugDevice as *mut *mut c_void)) && DEBUG {
-
-            debug_interface.as_ref().unwrap().ReportLiveDeviceObjects(D3D12_RLDO_DETAIL | D3D12_RLDO_IGNORE_INTERNAL);
-            debug_interface.as_ref().unwrap().Release();
-        }
+        // if SUCCEEDED(d3d12_device.as_ref().unwrap().QueryInterface(
+        //     &IID_ID3D12DebugDevice,
+        //     &mut debug_interface as *mut *mut ID3D12DebugDevice as *mut *mut c_void)) && DEBUG {
+        //     debug_interface.as_ref().unwrap().ReportLiveDeviceObjects(D3D12_RLDO_DETAIL | D3D12_RLDO_IGNORE_INTERNAL);
+        //     debug_interface.as_ref().unwrap().Release();
+        // }
 
         ShowWindow(hwnd, SW_NORMAL);
         UpdateWindow(hwnd);
@@ -368,7 +562,7 @@ fn main() {
 
             cmd_list.as_ref().unwrap().ResourceBarrier(1, &barrier_desc);
 
-            // cmd_list.as_ref().unwrap().SetPipelineState(pipeLineState);
+            cmd_list.as_ref().unwrap().SetPipelineState(pipeline_state);
 
             // set render target
             let mut rtv_heap_start = rtv_heaps.as_ref().unwrap().GetCPUDescriptorHandleForHeapStart();
@@ -384,6 +578,15 @@ fn main() {
 
             // clear render target
             cmd_list.as_ref().unwrap().ClearRenderTargetView(rtv_heap_start, &clear_color, 0, std::ptr::null_mut());
+
+            // draw call
+            cmd_list.as_ref().unwrap().RSSetViewports(1, &viewport);
+            cmd_list.as_ref().unwrap().RSSetScissorRects(1, &scissor_rect);
+            cmd_list.as_ref().unwrap().SetComputeRootSignature(root_signature);
+            cmd_list.as_ref().unwrap().IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+            cmd_list.as_ref().unwrap().IASetVertexBuffers(0, 1, &vertex_buffer_view);
+            cmd_list.as_ref().unwrap().IASetIndexBuffer(&index_buffer_view);
+            cmd_list.as_ref().unwrap().DrawIndexedInstanced(indices.len() as u32, 1, 0, 0, 0);
 
             // swap barrier state
             barrier_desc.u.Transition_mut().StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
@@ -426,6 +629,16 @@ fn encode(source: &str) -> Vec<u16> {
     source.encode_utf16().chain(Some(0)).collect()
 }
 
+fn get_relative_file_path_to_wide_str(s: &str) -> Vec<u16> {
+    let relative_path = Path::new(s);
+    let pwd = env::current_dir().unwrap();
+    let absolute_path = pwd.join(relative_path);
+    let wide_str = encode(absolute_path.to_str().unwrap());
+
+    wide_str
+}
+
+
 unsafe fn register_wndclass(class_name: &[u16]) -> bool {
     let mut winc = mem::zeroed::<WNDCLASSW>();
     winc.style = CS_HREDRAW | CS_VREDRAW;
@@ -465,13 +678,5 @@ mod tests {
     use super::*;
     #[test]
     fn some_test() {
-        let levels: [D3D_FEATURE_LEVEL; 4] = [
-            D3D_FEATURE_LEVEL_12_1,
-            D3D_FEATURE_LEVEL_12_0,
-            D3D_FEATURE_LEVEL_11_1,
-            D3D_FEATURE_LEVEL_11_0
-        ];
-
-        println!("{:?}", levels);
     }
 }
