@@ -50,7 +50,7 @@ struct XMFLOAT3 {
     y: f32,
     z: f32
 }
-type INDICES = [u32; 6];
+type INDICES = [u16; 6];
 
 enum BOOL {
     FALSE = 0,
@@ -132,20 +132,7 @@ fn main() {
         while  dxgi_factory.as_ref().unwrap().EnumAdapters(i, &mut tmp_adapter as *mut *mut IDXGIAdapter) != DXGI_ERROR_NOT_FOUND {
             i += 1;
 
-            let mut p_desc = DXGI_ADAPTER_DESC {
-                Description: [0; 128],
-                VendorId: 0,
-                DeviceId: 0,
-                SubSysId: 0,
-                Revision: 0,
-                DedicatedVideoMemory: 0,
-                DedicatedSystemMemory: 0,
-                SharedSystemMemory: 0,
-                AdapterLuid: LUID {
-                    LowPart: 0,
-                    HighPart: 0,
-                },
-            };
+            let mut p_desc: DXGI_ADAPTER_DESC = mem::zeroed();
 
             tmp_adapter.as_ref().unwrap().GetDesc(&mut p_desc);
 
@@ -262,17 +249,17 @@ fn main() {
         // create vertices
         let vertices = [
             XMFLOAT3 {
-                x: -0.5, y: -0.7, z: 0.0
+                x: -0.4, y: -0.7, z: 0.0
             },
             XMFLOAT3 {
-                x: 0.0, y: 0.7, z: 0.0
+                x: -0.4, y: 0.7, z: 0.0
             },
             XMFLOAT3 {
-                x: 0.5, y: -0.7, z: 0.0
+                x: 0.4, y: -0.7, z: 0.0
             },
-            // XMFLOAT3 {
-            //     x: 0.4, y: 0.7, z: 0.0
-            // }
+            XMFLOAT3 {
+                x: 0.4, y: 0.7, z: 0.0
+            }
         ];
 
         // create vertex buffer
@@ -290,7 +277,7 @@ fn main() {
         let mut vertex_buffer_resource_desc = D3D12_RESOURCE_DESC {
             Dimension : D3D12_RESOURCE_DIMENSION_BUFFER,
             Alignment: 0,
-            Width : std::mem::size_of::<[XMFLOAT3; 4]>() as u64,
+            Width : std::mem::size_of_val(&vertices) as u64,
             Height : 1,
             DepthOrArraySize : 1,
             MipLevels : 1,
@@ -316,9 +303,9 @@ fn main() {
         );
 
         // vertex buffer map
-        let mut vertex_buffer_map = std::ptr::null_mut::<[XMFLOAT3; 3]>();
+        let mut vertex_buffer_map = std::ptr::null_mut::<[XMFLOAT3; 4]>();
 
-        result = vertex_buffer.as_ref().unwrap().Map(0, std::ptr::null_mut(), &mut vertex_buffer_map as *mut *mut [XMFLOAT3; 3] as *mut *mut c_void);
+        result = vertex_buffer.as_ref().unwrap().Map(0, std::ptr::null_mut(), &mut vertex_buffer_map as *mut *mut [XMFLOAT3; 4] as *mut *mut c_void);
         vertex_buffer_map.copy_from(&vertices, std::mem::size_of_val(&vertices) );
         vertex_buffer.as_ref().unwrap().Unmap(0, std::ptr::null_mut() );
 
@@ -329,9 +316,6 @@ fn main() {
             SizeInBytes : std::mem::size_of_val(&vertices) as u32,
             StrideInBytes : std::mem::size_of_val(&vertices[0]) as u32,
         };
-
-        println!("{:?}", std::mem::size_of_val(&vertices) as u32);
-
 
         // create indices
         let indices: INDICES = [
@@ -353,9 +337,10 @@ fn main() {
         );
 
         // indices buffer map
-        let mut index_map = std::ptr::null_mut::<INDICES>();
-        index_buffer.as_ref().unwrap().Map(0, std::ptr::null_mut(), &mut index_map as *mut *mut INDICES as *mut *mut c_void);
-        index_map.copy_from(&indices, std::mem::size_of_val(&indices) );
+        let mut index_buffer_map = std::ptr::null_mut::<INDICES>();
+
+        result = index_buffer.as_ref().unwrap().Map(0, std::ptr::null_mut(), &mut index_buffer_map as *mut *mut INDICES as *mut *mut c_void);
+        index_buffer_map.copy_from(&indices, std::mem::size_of_val(&indices) );
         index_buffer.as_ref().unwrap().Unmap(0, std::ptr::null_mut() );
 
         // create index buffer view
@@ -602,8 +587,8 @@ fn main() {
             cmd_list.as_ref().unwrap().SetComputeRootSignature(root_signature);
             cmd_list.as_ref().unwrap().IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
             cmd_list.as_ref().unwrap().IASetVertexBuffers(0, 1, &vertex_buffer_view);
-            // cmd_list.as_ref().unwrap().IASetIndexBuffer(&index_buffer_view);
-            cmd_list.as_ref().unwrap().DrawInstanced(3, 1, 0, 0);
+            cmd_list.as_ref().unwrap().IASetIndexBuffer(&index_buffer_view);
+            cmd_list.as_ref().unwrap().DrawIndexedInstanced(indices.len() as u32, 1, 0, 0, 0);
 
             // swap barrier state
             barrier_desc.u.Transition_mut().StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
