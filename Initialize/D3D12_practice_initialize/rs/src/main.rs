@@ -44,7 +44,7 @@ const WINDOW_WIDTH: i32 = 1280;
 const WINDOW_HEIGHT: i32 = 720;
 const DEBUG: bool = true;
 
-type XMFLOAT3 = [[f64; 3]; 4];
+type XMFLOAT3 = [f64; 3];
 type INDICES = [u32; 6];
 
 enum BOOL {
@@ -91,11 +91,6 @@ fn main() {
             &IID_ID3D12Debug,
             &mut debug_interface as *mut *mut ID3D12Debug as *mut *mut c_void)) && DEBUG {
             debug_interface.as_ref().unwrap().EnableDebugLayer();
-            // debug_interface.as_ref().unwrap().ReportLiveDeviceObjects(D3D12_RLDO_DETAIL | D3D12_RLDO_IGNORE_INTERNAL);
-            // debug_interface.as_ref().unwrap().Release();
-        } else {
-            println!("{:?}", "barbar");
-
         }
 
 
@@ -260,7 +255,7 @@ fn main() {
 
 
         // create vertices
-        let vertices: XMFLOAT3 = [
+        let vertices: [XMFLOAT3; 4] = [
             [-0.4, -0.7, 0.0 ],
             [-0.4,  0.7, 0.0 ],
             [ 0.4, -0.7, 0.0 ],
@@ -282,7 +277,7 @@ fn main() {
         let mut vertex_buffer_resource_desc = D3D12_RESOURCE_DESC {
             Dimension : D3D12_RESOURCE_DIMENSION_BUFFER,
             Alignment: 0,
-            Width : std::mem::size_of::<XMFLOAT3>() as u64,
+            Width : std::mem::size_of::<[XMFLOAT3; 4]>() as u64,
             Height : 1,
             DepthOrArraySize : 1,
             MipLevels : 1,
@@ -308,9 +303,9 @@ fn main() {
         );
 
         // vertex buffer map
-        let mut vertex_buffer_map = std::ptr::null_mut::<XMFLOAT3>();
+        let mut vertex_buffer_map = std::ptr::null_mut::<[XMFLOAT3; 4]>();
 
-        result = vertex_buffer.as_ref().unwrap().Map(0, std::ptr::null_mut(), &mut vertex_buffer_map as *mut *mut XMFLOAT3 as *mut *mut c_void);
+        result = vertex_buffer.as_ref().unwrap().Map(0, std::ptr::null_mut(), &mut vertex_buffer_map as *mut *mut [XMFLOAT3; 4] as *mut *mut c_void);
         vertex_buffer_map.copy_from_nonoverlapping(&vertices, vertices.len() );
         vertex_buffer.as_ref().unwrap().Unmap(0, std::ptr::null_mut() );
 
@@ -318,10 +313,8 @@ fn main() {
         // create vertex buffer view
         let vertex_buffer_view = D3D12_VERTEX_BUFFER_VIEW {
             BufferLocation : vertex_buffer.as_ref().unwrap().GetGPUVirtualAddress(),
-            // SizeInBytes : vertices.len() as u32,
-            // StrideInBytes : vertices[0].len() as u32,
-            SizeInBytes : std::mem::size_of::<XMFLOAT3>() as u32,
-            StrideInBytes : std::mem::size_of::<f64>() as u32,
+            SizeInBytes : std::mem::size_of::<[XMFLOAT3; 4]>() as u32,
+            StrideInBytes : std::mem::size_of::<XMFLOAT3>() as u32,
         };
 
         // create indices
@@ -350,7 +343,7 @@ fn main() {
         index_buffer.as_ref().unwrap().Unmap(0, std::ptr::null_mut() );
 
         // create index buffer view
-        let mut index_buffer_view = D3D12_INDEX_BUFFER_VIEW {
+        let index_buffer_view = D3D12_INDEX_BUFFER_VIEW {
             BufferLocation : index_buffer.as_ref().unwrap().GetGPUVirtualAddress(),
             Format : DXGI_FORMAT_R16_UINT,
             SizeInBytes : std::mem::size_of::<INDICES>() as u32,
@@ -386,16 +379,15 @@ fn main() {
         );
 
 
-        // notify compilation error
-        if FAILED(result) {
-            const FILE_NOT_FOUND: i32 = ERROR_FILE_NOT_FOUND as i32;
-            const PATH_NOT_FOUND: i32 = ERROR_PATH_NOT_FOUND as i32;
-            match result {
-                FILE_NOT_FOUND => println!("{:}", "file not found"),
-                PATH_NOT_FOUND => println!("{:}", "path not found"),
-                _ => {
-                    // TODO
-                }
+        // notify compilation status
+        const FILE_NOT_FOUND: i32 = ERROR_FILE_NOT_FOUND as i32;
+        const PATH_NOT_FOUND: i32 = ERROR_PATH_NOT_FOUND as i32;
+        match result {
+            FILE_NOT_FOUND => println!("{:}", "file not found"),
+            PATH_NOT_FOUND => println!("{:}", "path not found"),
+            S_OK => println!("{:}", "success compile shader"),
+            _ => {
+                // TODO
             }
         }
 
@@ -455,6 +447,14 @@ fn main() {
         // render target settings
         gr_pipeline.NumRenderTargets = 1;
         gr_pipeline.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+
+        gr_pipeline.RTVFormats[1] = DXGI_FORMAT_UNKNOWN;
+        gr_pipeline.RTVFormats[2] = DXGI_FORMAT_UNKNOWN;
+        gr_pipeline.RTVFormats[3] = DXGI_FORMAT_UNKNOWN;
+        gr_pipeline.RTVFormats[4] = DXGI_FORMAT_UNKNOWN;
+        gr_pipeline.RTVFormats[5] = DXGI_FORMAT_UNKNOWN;
+        gr_pipeline.RTVFormats[6] = DXGI_FORMAT_UNKNOWN;
+        gr_pipeline.RTVFormats[7] = DXGI_FORMAT_UNKNOWN;
 
         // anti aliasing
         gr_pipeline.RasterizerState.MultisampleEnable = BOOL::FALSE as i32;
@@ -518,11 +518,12 @@ fn main() {
 
         // enable debug layer
         // if SUCCEEDED(d3d12_device.as_ref().unwrap().QueryInterface(
-        //     &IID_ID3D12DebugDevice,
+        //     &IID_ID3D12Device,
         //     &mut debug_interface as *mut *mut ID3D12DebugDevice as *mut *mut c_void)) && DEBUG {
         //     debug_interface.as_ref().unwrap().ReportLiveDeviceObjects(D3D12_RLDO_DETAIL | D3D12_RLDO_IGNORE_INTERNAL);
         //     debug_interface.as_ref().unwrap().Release();
         // }
+
 
         ShowWindow(hwnd, SW_NORMAL);
         UpdateWindow(hwnd);
@@ -596,14 +597,13 @@ fn main() {
             // run commands
             cmd_list.as_ref().unwrap().Close();
 
-            // ID3D12CommandList* cmdLists[] = { _cmdList };
             let cmd_list_array = [ cmd_list.cast::<ID3D12CommandList>() ];
 
             cmd_queue.as_ref().unwrap().ExecuteCommandLists(1, &cmd_list_array[0]);
 
+            // handle fence
             cmd_queue.as_ref().unwrap().Signal(fence, current_frame);
 
-            // handle fence
             if fence.as_ref().unwrap().GetCompletedValue() != current_frame {
                 let event = CreateEventW(ptr::null_mut(), 0, 0, ptr::null_mut());
 
