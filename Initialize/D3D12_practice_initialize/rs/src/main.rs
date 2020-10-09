@@ -44,7 +44,12 @@ const WINDOW_WIDTH: i32 = 1280;
 const WINDOW_HEIGHT: i32 = 720;
 const DEBUG: bool = true;
 
-type XMFLOAT3 = [f64; 3];
+#[derive(Debug)]
+struct XMFLOAT3 {
+    x: f32,
+    y: f32,
+    z: f32
+}
 type INDICES = [u32; 6];
 
 enum BOOL {
@@ -255,11 +260,19 @@ fn main() {
 
 
         // create vertices
-        let vertices: [XMFLOAT3; 4] = [
-            [-0.4, -0.7, 0.0 ],
-            [-0.4,  0.7, 0.0 ],
-            [ 0.4, -0.7, 0.0 ],
-            [ 0.4,  0.7, 0.0 ],
+        let vertices = [
+            XMFLOAT3 {
+                x: -0.5, y: -0.7, z: 0.0
+            },
+            XMFLOAT3 {
+                x: 0.0, y: 0.7, z: 0.0
+            },
+            XMFLOAT3 {
+                x: 0.5, y: -0.7, z: 0.0
+            },
+            // XMFLOAT3 {
+            //     x: 0.4, y: 0.7, z: 0.0
+            // }
         ];
 
         // create vertex buffer
@@ -303,19 +316,22 @@ fn main() {
         );
 
         // vertex buffer map
-        let mut vertex_buffer_map = std::ptr::null_mut::<[XMFLOAT3; 4]>();
+        let mut vertex_buffer_map = std::ptr::null_mut::<[XMFLOAT3; 3]>();
 
-        result = vertex_buffer.as_ref().unwrap().Map(0, std::ptr::null_mut(), &mut vertex_buffer_map as *mut *mut [XMFLOAT3; 4] as *mut *mut c_void);
-        vertex_buffer_map.copy_from_nonoverlapping(&vertices, vertices.len() );
+        result = vertex_buffer.as_ref().unwrap().Map(0, std::ptr::null_mut(), &mut vertex_buffer_map as *mut *mut [XMFLOAT3; 3] as *mut *mut c_void);
+        vertex_buffer_map.copy_from(&vertices, std::mem::size_of_val(&vertices) );
         vertex_buffer.as_ref().unwrap().Unmap(0, std::ptr::null_mut() );
 
 
         // create vertex buffer view
         let vertex_buffer_view = D3D12_VERTEX_BUFFER_VIEW {
             BufferLocation : vertex_buffer.as_ref().unwrap().GetGPUVirtualAddress(),
-            SizeInBytes : std::mem::size_of::<[XMFLOAT3; 4]>() as u32,
-            StrideInBytes : std::mem::size_of::<XMFLOAT3>() as u32,
+            SizeInBytes : std::mem::size_of_val(&vertices) as u32,
+            StrideInBytes : std::mem::size_of_val(&vertices[0]) as u32,
         };
+
+        println!("{:?}", std::mem::size_of_val(&vertices) as u32);
+
 
         // create indices
         let indices: INDICES = [
@@ -339,14 +355,14 @@ fn main() {
         // indices buffer map
         let mut index_map = std::ptr::null_mut::<INDICES>();
         index_buffer.as_ref().unwrap().Map(0, std::ptr::null_mut(), &mut index_map as *mut *mut INDICES as *mut *mut c_void);
-        index_map.copy_from_nonoverlapping(&indices, indices.len() );
+        index_map.copy_from(&indices, std::mem::size_of_val(&indices) );
         index_buffer.as_ref().unwrap().Unmap(0, std::ptr::null_mut() );
 
         // create index buffer view
         let index_buffer_view = D3D12_INDEX_BUFFER_VIEW {
             BufferLocation : index_buffer.as_ref().unwrap().GetGPUVirtualAddress(),
             Format : DXGI_FORMAT_R16_UINT,
-            SizeInBytes : std::mem::size_of::<INDICES>() as u32,
+            SizeInBytes : std::mem::size_of_val(&indices) as u32,
         };
 
         // create shader object
@@ -586,8 +602,8 @@ fn main() {
             cmd_list.as_ref().unwrap().SetComputeRootSignature(root_signature);
             cmd_list.as_ref().unwrap().IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
             cmd_list.as_ref().unwrap().IASetVertexBuffers(0, 1, &vertex_buffer_view);
-            cmd_list.as_ref().unwrap().IASetIndexBuffer(&index_buffer_view);
-            cmd_list.as_ref().unwrap().DrawIndexedInstanced(indices.len() as u32, 1, 0, 0, 0);
+            // cmd_list.as_ref().unwrap().IASetIndexBuffer(&index_buffer_view);
+            cmd_list.as_ref().unwrap().DrawInstanced(3, 1, 0, 0);
 
             // swap barrier state
             barrier_desc.u.Transition_mut().StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
