@@ -107,8 +107,6 @@ fn main() {
             D3D_FEATURE_LEVEL_11_0
         ];
 
-        let mut feature_level : D3D_FEATURE_LEVEL = 0;
-
         for lv in levels.iter() {
 
             if D3D12CreateDevice(
@@ -118,7 +116,6 @@ fn main() {
                 &mut d3d12_device as *mut *mut ID3D12Device as *mut *mut c_void
                 )
                  == S_OK {
-                feature_level = *lv;
 			    break;
             }
         }
@@ -129,7 +126,7 @@ fn main() {
 
         let mut i = 0;
 
-        while  dxgi_factory.as_ref().unwrap().EnumAdapters(i, &mut tmp_adapter as *mut *mut IDXGIAdapter) != DXGI_ERROR_NOT_FOUND {
+        while dxgi_factory.as_ref().unwrap().EnumAdapters(i, &mut tmp_adapter as *mut *mut IDXGIAdapter) != DXGI_ERROR_NOT_FOUND {
             i += 1;
 
             let mut p_desc: DXGI_ADAPTER_DESC = mem::zeroed();
@@ -637,6 +634,19 @@ fn get_relative_file_path_to_wide_str(s: &str) -> Vec<u16> {
     let wide_str = encode(absolute_path.to_str().unwrap());
 
     wide_str
+}
+
+fn get_pointer_of_self_object<T>(object: &mut T) -> *mut *mut winapi::ctypes::c_void {
+    let mut_ref: &mut T = object;
+
+    // next we need to convert the reference to a pointer
+    let raw_ptr: *mut T = mut_ref as *mut T;
+
+    // and the pointer type we can cast to the c_void type required by CreateWindowEx
+    let void_ptr: *mut *mut winapi::ctypes::c_void = raw_ptr as *mut *mut winapi::ctypes::c_void;
+
+    // all steps expressed in a single line
+    void_ptr
 }
 
 
