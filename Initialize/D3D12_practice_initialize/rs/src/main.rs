@@ -40,6 +40,8 @@ use std::path::{ Path, PathBuf };
 use std::ffi::CString;
 use std::env;
 
+pub mod lib;
+
 const WINDOW_WIDTH: i32 = 1280;
 const WINDOW_HEIGHT: i32 = 720;
 const DEBUG: bool = true;
@@ -73,22 +75,15 @@ fn main() {
         let mut result = -1;
 
         let mut d3d12_device = ptr::null_mut::<ID3D12Device>();
-        let mut dxgi_factory = ptr::null_mut::<IDXGIFactory6>();
+        let mut dxgi_factory = ptr::null_mut();
         let mut swapchain = ptr::null_mut(); // IDXGISwapChain4
         let mut debug_interface = ptr::null_mut::<ID3D12Debug>();
 
 
         if DEBUG {
-            result = CreateDXGIFactory2(
-                DXGI_CREATE_FACTORY_DEBUG,
-                &IID_IDXGIFactory4,
-                &mut dxgi_factory as *mut *mut IDXGIFactory6 as *mut *mut c_void,
-            );
+            dxgi_factory = lib::create_dxgi_factory2::<IDXGIFactory6>(DXGI_CREATE_FACTORY_DEBUG).unwrap();
         } else {
-            result = CreateDXGIFactory1(
-                &IID_IDXGIFactory1,
-                &mut dxgi_factory as *mut *mut IDXGIFactory6 as *mut *mut c_void
-            );
+            // dxgi_factory = lib::create_dxgi_factory1::<IDXGIFactory1>().unwrap();
         }
 
 
@@ -634,19 +629,6 @@ fn get_relative_file_path_to_wide_str(s: &str) -> Vec<u16> {
     let wide_str = encode(absolute_path.to_str().unwrap());
 
     wide_str
-}
-
-fn get_pointer_of_self_object<T>(object: &mut T) -> *mut *mut winapi::ctypes::c_void {
-    let mut_ref: &mut T = object;
-
-    // next we need to convert the reference to a pointer
-    let raw_ptr: *mut T = mut_ref as *mut T;
-
-    // and the pointer type we can cast to the c_void type required by CreateWindowEx
-    let void_ptr: *mut *mut winapi::ctypes::c_void = raw_ptr as *mut *mut winapi::ctypes::c_void;
-
-    // all steps expressed in a single line
-    void_ptr
 }
 
 
