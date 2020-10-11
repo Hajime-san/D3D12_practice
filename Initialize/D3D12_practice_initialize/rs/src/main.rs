@@ -74,7 +74,7 @@ fn main() {
         // return value 0(HRESULT->S_OK) is ok
         let mut result = -1;
 
-        let mut d3d12_device = ptr::null_mut::<ID3D12Device>();
+
         let mut dxgi_factory = ptr::null_mut();
         let mut swapchain = ptr::null_mut(); // IDXGISwapChain4
         let mut debug_interface = ptr::null_mut::<ID3D12Debug>();
@@ -93,72 +93,14 @@ fn main() {
             debug_interface.as_ref().unwrap().EnableDebugLayer();
         }
 
-
-        // initialize Direct3D device
-        let levels: [D3D_FEATURE_LEVEL; 4] = [
-            D3D_FEATURE_LEVEL_12_1,
-            D3D_FEATURE_LEVEL_12_0,
-            D3D_FEATURE_LEVEL_11_1,
-            D3D_FEATURE_LEVEL_11_0
-        ];
-
-        for lv in levels.iter() {
-
-            if D3D12CreateDevice(
-                ptr::null_mut(),
-                *lv,
-                &IID_ID3D12Device,
-                &mut d3d12_device as *mut *mut ID3D12Device as *mut *mut c_void
-                )
-                 == S_OK {
-			    break;
-            }
-        }
-
-
-        // iterate adapter to use
-        let mut tmp_adapter = ptr::null_mut::<IDXGIAdapter>();
-
-        let mut i = 0;
-
-        while dxgi_factory.as_ref().unwrap().EnumAdapters(i, &mut tmp_adapter as *mut *mut IDXGIAdapter) != DXGI_ERROR_NOT_FOUND {
-            i += 1;
-
-            let mut p_desc: DXGI_ADAPTER_DESC = mem::zeroed();
-
-            tmp_adapter.as_ref().unwrap().GetDesc(&mut p_desc);
-
-            if p_desc.Description.to_vec() != encode("NVIDIA") {
-
-                tmp_adapter = tmp_adapter;
-
-                break;
-            }
-
-        }
+        // device
+        let d3d12_device = lib::create_d3d12_device().unwrap();
 
         // create command list, allocator
-        let mut cmd_allocator = ptr::null_mut();
-        let mut cmd_list = ptr::null_mut::<ID3D12GraphicsCommandList>();
-
-        result = d3d12_device.as_ref().unwrap().CreateCommandAllocator(
-            D3D12_COMMAND_LIST_TYPE_DIRECT,
-            &IID_ID3D12CommandAllocator,
-            &mut cmd_allocator as *mut *mut ID3D12CommandAllocator as *mut *mut c_void
-        );
-
-        result = d3d12_device.as_ref().unwrap().CreateCommandList(
-            0,
-            D3D12_COMMAND_LIST_TYPE_DIRECT,
-            cmd_allocator,
-            ptr::null_mut(),
-            &IID_ID3D12GraphicsCommandList,
-            &mut cmd_list as *mut *mut ID3D12GraphicsCommandList as *mut *mut c_void
-        );
+        let mut cmd_allocator = lib::create_command_allocator(d3d12_device, D3D12_COMMAND_LIST_TYPE_DIRECT).unwrap();
+        let mut cmd_list = lib::create_command_list(d3d12_device, 0, D3D12_COMMAND_LIST_TYPE_DIRECT, cmd_allocator, ptr::null_mut()).unwrap();
 
         // create commnad queue
-        let mut cmd_queue = ptr::null_mut::<ID3D12CommandQueue>();
-
         let mut cmd_queue_desc = D3D12_COMMAND_QUEUE_DESC {
             Flags : D3D12_COMMAND_QUEUE_FLAG_NONE,
             NodeMask : 0,
@@ -166,11 +108,8 @@ fn main() {
             Type : D3D12_COMMAND_LIST_TYPE_DIRECT,
         };
 
-        result = d3d12_device.as_ref().unwrap().CreateCommandQueue(
-            &mut cmd_queue_desc,
-            &IID_ID3D12CommandQueue,
-            &mut cmd_queue as *mut *mut ID3D12CommandQueue as *mut *mut c_void
-        );
+        let mut cmd_queue = lib::create_command_queue(d3d12_device, &cmd_queue_desc).unwrap();
+
 
         // create swapchain
         let swapchain_desc1 = DXGI_SWAP_CHAIN_DESC1 {
@@ -190,47 +129,33 @@ fn main() {
             Flags : DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH,
         };
 
-        // function CreateSwapChainForHwnd 1st argument pDevice is command queue object in IDXGIFactory6
-        result = dxgi_factory.as_ref().unwrap().CreateSwapChainForHwnd(
-            cmd_queue as *mut IUnknown,
+        lib::create_swap_chain_for_hwnd(
+            dxgi_factory,
+            cmd_queue,
             hwnd,
             &swapchain_desc1,
             std::ptr::null_mut(),
             std::ptr::null_mut(),
             &mut swapchain
-        );
+        ).unwrap();
+
 
         // create Render Target View //
 
         // create discriptor heap
-        let mut heap_desc = D3D12_DESCRIPTOR_HEAP_DESC {
+        let heap_desc = D3D12_DESCRIPTOR_HEAP_DESC {
             Type : D3D12_DESCRIPTOR_HEAP_TYPE_RTV,
             NodeMask : 0,
             NumDescriptors : 2,
             Flags : D3D12_DESCRIPTOR_HEAP_FLAG_NONE,
         };
 
-        let mut rtv_heaps = std::ptr::null_mut::<ID3D12DescriptorHeap>();
-
-        result = d3d12_device.as_ref().unwrap().CreateDescriptorHeap(
-            &mut heap_desc,
-            &IID_ID3D12DescriptorHeap,
-            &mut rtv_heaps as *mut *mut ID3D12DescriptorHeap as *mut *mut c_void
-        );
+        let mut rtv_heaps = lib::create_descriptor_heap(d3d12_device, &heap_desc).unwrap();
 
 
         // bind render target view heap to swap chain buffer
-        let mut back_buffers = vec![std::ptr::null_mut::<ID3D12Resource>(); swapchain_desc1.BufferCount as usize];
+        let mut back_buffers = lib::create_back_buffer(d3d12_device, swapchain, swapchain_desc1, rtv_heaps, std::ptr::null_mut());
 
-        let mut handle = rtv_heaps.as_ref().unwrap().GetCPUDescriptorHandleForHeapStart();
-
-        for i in 0..swapchain_desc1.BufferCount {
-            result = swapchain.as_ref().unwrap().GetBuffer(i as u32, &IID_ID3D12Resource, &mut back_buffers[i as usize] as *mut *mut ID3D12Resource as *mut *mut c_void);
-
-            d3d12_device.as_ref().unwrap().CreateRenderTargetView(back_buffers[i as usize], std::ptr::null_mut(), handle);
-
-            handle.ptr += d3d12_device.as_ref().unwrap().GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV) as usize;
-        }
 
         // create fence
         let mut fence = std::ptr::null_mut::<ID3D12Fence>();
@@ -351,8 +276,8 @@ fn main() {
             get_relative_file_path_to_wide_str("shaders\\VertexShader.hlsl").as_ptr() as *const u16,
             std::ptr::null_mut(),
             D3D_COMPILE_STANDARD_FILE_INCLUDE,
-            CString::new("BasicVS").unwrap().into_raw(),
-            CString::new("vs_5_0").unwrap().into_raw(),
+            CString::new("BasicVS").unwrap().as_ptr(),
+            CString::new("vs_5_0").unwrap().as_ptr(),
             D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION,
             0,
             &mut vertex_shader_blob,
@@ -363,8 +288,8 @@ fn main() {
             get_relative_file_path_to_wide_str("shaders\\PixelShader.hlsl").as_ptr() as *const u16,
             std::ptr::null_mut(),
             D3D_COMPILE_STANDARD_FILE_INCLUDE,
-            CString::new("BasicPS").unwrap().into_raw(),
-            CString::new("ps_5_0").unwrap().into_raw(),
+            CString::new("BasicPS").unwrap().as_ptr(),
+            CString::new("ps_5_0").unwrap().as_ptr(),
             D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION,
             0,
             &mut pixel_shader_blob,
