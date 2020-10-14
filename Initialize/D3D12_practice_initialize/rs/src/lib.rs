@@ -42,6 +42,15 @@ use std::path::{ Path, PathBuf };
 use std::ffi::CString;
 use std::env;
 
+#[derive(Debug, Clone)]
+pub struct XMFLOAT3 {
+    pub x: f32,
+    pub y: f32,
+    pub z: f32
+}
+type INDICES = [u16; 6];
+
+
 pub fn create_dxgi_factory1<T: Interface>() -> Result<*mut T, winerror::HRESULT> {
     let mut obj = ptr::null_mut::<T>();
     let result = unsafe {
@@ -195,9 +204,7 @@ pub fn create_swap_chain_for_hwnd(dxgi_factory: *mut dxgi1_6::IDXGIFactory6,
                                     pDesc: *const dxgi1_2::DXGI_SWAP_CHAIN_DESC1,
                                     pFullscreenDesc: *mut dxgi1_2::DXGI_SWAP_CHAIN_FULLSCREEN_DESC,
                                     pRestrictToOutput: *mut dxgi::IDXGIOutput,
-                                    ppSwapChain: *mut *mut dxgi1_2::IDXGISwapChain1) -> Result<*mut d3d12::ID3D12CommandQueue, winerror::HRESULT> {
-
-    let mut obj = ptr::null_mut::<d3d12::ID3D12CommandQueue>();
+                                    ppSwapChain: *mut *mut dxgi1_2::IDXGISwapChain1) {
 
     let result = unsafe {
         dxgi_factory.as_ref().unwrap().
@@ -209,12 +216,7 @@ pub fn create_swap_chain_for_hwnd(dxgi_factory: *mut dxgi1_6::IDXGIFactory6,
             pRestrictToOutput,
             ppSwapChain
         )
-     };
-
-    match result {
-        winerror::S_OK => Ok(obj),
-        _ => Err(result)
-    }
+    };
 }
 
 pub fn create_descriptor_heap(device: *mut d3d12::ID3D12Device, pDescriptorHeapDesc: *const d3d12::D3D12_DESCRIPTOR_HEAP_DESC) -> Result<*mut d3d12::ID3D12DescriptorHeap, winerror::HRESULT> {
@@ -260,6 +262,36 @@ pub fn create_back_buffer(device: *mut d3d12::ID3D12Device, swapchain: *mut dxgi
     back_buffers
 }
 
+pub fn create_fence(device: *mut d3d12::ID3D12Device, InitialValue: i32, Flags: d3d12::D3D12_FENCE_FLAGS) -> Result<*mut d3d12::ID3D12Fence, winerror::HRESULT> {
+
+    let mut obj = ptr::null_mut::<d3d12::ID3D12Fence>();
+
+    let result = unsafe {
+        device.as_ref().unwrap().
+        CreateFence(
+            InitialValue as u64,
+            Flags,
+            &d3d12::ID3D12Fence::uuidof(),
+            get_pointer_of_self_object(&mut obj)
+        )
+    };
+
+    match result {
+        winerror::S_OK => Ok(obj),
+        _ => Err(result)
+    }
+}
+
+pub fn create_vertex_buffer_view(buffer: *mut d3d12::ID3D12Resource, vertices: Vec<XMFLOAT3>) -> d3d12::D3D12_VERTEX_BUFFER_VIEW {
+    let vertex_buffer_view = d3d12::D3D12_VERTEX_BUFFER_VIEW {
+        BufferLocation : unsafe { buffer.as_ref().unwrap().GetGPUVirtualAddress() },
+        SizeInBytes : std::mem::size_of_val(&vertices) as u32,
+        StrideInBytes : std::mem::size_of_val(&vertices[0]) as u32,
+    };
+
+    vertex_buffer_view
+}
+
 fn get_pointer_of_self_object<T>(object: &mut T) -> *mut *mut winapi::ctypes::c_void {
     // we need to convert the reference to a pointer
     let raw_ptr = object as *mut T;
@@ -275,4 +307,14 @@ fn get_pointer_of_self_object<T>(object: &mut T) -> *mut *mut winapi::ctypes::c_
 
 fn utf16_to_vector(source: &str) -> Vec<u16> {
     source.encode_utf16().chain(Some(0)).collect()
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn some_test() {
+
+    }
 }

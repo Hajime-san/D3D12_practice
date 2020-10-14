@@ -46,12 +46,6 @@ const WINDOW_WIDTH: i32 = 1280;
 const WINDOW_HEIGHT: i32 = 720;
 const DEBUG: bool = true;
 
-#[derive(Debug)]
-struct XMFLOAT3 {
-    x: f32,
-    y: f32,
-    z: f32
-}
 type INDICES = [u16; 6];
 
 enum BOOL {
@@ -137,7 +131,7 @@ fn main() {
             std::ptr::null_mut(),
             std::ptr::null_mut(),
             &mut swapchain
-        ).unwrap();
+        );
 
 
         // create Render Target View //
@@ -158,23 +152,20 @@ fn main() {
 
 
         // create fence
-        let mut fence = std::ptr::null_mut::<ID3D12Fence>();
-
-        result = d3d12_device.as_ref().unwrap().CreateFence(0, D3D12_FENCE_FLAG_NONE, &IID_ID3D12Fence, &mut fence as *mut *mut ID3D12Fence as *mut *mut c_void);
-
+        let mut fence = lib::create_fence(d3d12_device, 0, D3D12_FENCE_FLAG_NONE).unwrap();
 
         // create vertices
-        let vertices = [
-            XMFLOAT3 {
+        let vertices: Vec<lib::XMFLOAT3>  = vec![
+            lib::XMFLOAT3 {
                 x: -0.4, y: -0.7, z: 0.0
             },
-            XMFLOAT3 {
+            lib::XMFLOAT3 {
                 x: -0.4, y: 0.7, z: 0.0
             },
-            XMFLOAT3 {
+            lib::XMFLOAT3 {
                 x: 0.4, y: -0.7, z: 0.0
             },
-            XMFLOAT3 {
+            lib::XMFLOAT3 {
                 x: 0.4, y: 0.7, z: 0.0
             }
         ];
@@ -220,17 +211,17 @@ fn main() {
         );
 
         // vertex buffer map
-        let mut vertex_buffer_map = std::ptr::null_mut::<[XMFLOAT3; 4]>();
+        let mut vertex_buffer_map = std::ptr::null_mut::<Vec<lib::XMFLOAT3>>();
 
-        result = vertex_buffer.as_ref().unwrap().Map(0, std::ptr::null_mut(), &mut vertex_buffer_map as *mut *mut [XMFLOAT3; 4] as *mut *mut c_void);
-        vertex_buffer_map.copy_from(&vertices, std::mem::size_of_val(&vertices) );
+        result = vertex_buffer.as_ref().unwrap().Map(0, std::ptr::null_mut(), &mut vertex_buffer_map as *mut *mut Vec<lib::XMFLOAT3> as *mut *mut c_void);
+        vertex_buffer_map.copy_from(vertices.as_ptr().cast::<Vec<lib::XMFLOAT3>>(), std::mem::size_of_val(&vertices) * 2 );
         vertex_buffer.as_ref().unwrap().Unmap(0, std::ptr::null_mut() );
 
 
         // create vertex buffer view
         let vertex_buffer_view = D3D12_VERTEX_BUFFER_VIEW {
             BufferLocation : vertex_buffer.as_ref().unwrap().GetGPUVirtualAddress(),
-            SizeInBytes : std::mem::size_of_val(&vertices) as u32,
+            SizeInBytes : (std::mem::size_of_val(&vertices) * 2) as u32,
             StrideInBytes : std::mem::size_of_val(&vertices[0]) as u32,
         };
 
@@ -305,7 +296,13 @@ fn main() {
             PATH_NOT_FOUND => println!("{:}", "path not found"),
             S_OK => println!("{:}", "success compile shader"),
             _ => {
-                // TODO
+                // output compilation error message
+                let error_str = std::string::String::from_raw_parts(shader_error_blob.as_ref().unwrap().GetBufferPointer().cast::<u8>(), shader_error_blob.as_ref().unwrap().GetBufferSize(), 100000);
+
+                println!("{:?}", error_str);
+
+                panic!();
+
             }
         }
 
