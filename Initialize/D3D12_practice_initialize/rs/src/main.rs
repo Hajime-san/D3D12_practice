@@ -9,8 +9,6 @@ use winapi::{
         d3d12::*,
         d3d12sdklayers::*,
         d3dcommon::*,
-        d3dcompiler::*,
-        unknwnbase::{ IUnknown },
         winbase::{ INFINITE },
         synchapi::{ CreateEventW, WaitForSingleObject },
         handleapi::{ CloseHandle },
@@ -18,13 +16,10 @@ use winapi::{
     shared::{
         windef::{ HWND, HBRUSH },
         minwindef::{ UINT, WPARAM, LPARAM, LRESULT, FLOAT },
-        winerror::{ S_OK, DXGI_ERROR_NOT_FOUND, SUCCEEDED, FAILED, HRESULT_FROM_WIN32, ERROR_FILE_NOT_FOUND, ERROR_PATH_NOT_FOUND },
-        ntdef::{ LUID, WCHAR },
-        guiddef::*,
+        winerror::{ SUCCEEDED },
         dxgi::*,
         dxgi1_2::*,
         dxgi1_3::*,
-        dxgi1_4::*,
         dxgi1_5::*,
         dxgi1_6::*,
         dxgiformat::*,
@@ -35,18 +30,13 @@ use winapi::{
 
 use std::ptr;
 use std::mem;
-use std::str;
-use std::path::{ Path, PathBuf };
 use std::ffi::CString;
-use std::env;
 
 pub mod lib;
 
 const WINDOW_WIDTH: i32 = 1280;
 const WINDOW_HEIGHT: i32 = 720;
 const DEBUG: bool = true;
-
-type INDICES = [u16; 6];
 
 enum BOOL {
     FALSE = 0,
@@ -55,7 +45,7 @@ enum BOOL {
 
 fn main() {
     unsafe {
-        let class_name = encode("DX12Sample");
+        let class_name = lib::utf16_to_vec("DX12Sample");
         if !register_wndclass(&class_name) {
             return;
         }
@@ -185,7 +175,7 @@ fn main() {
         let mut vertex_buffer_resource_desc = D3D12_RESOURCE_DESC {
             Dimension : D3D12_RESOURCE_DIMENSION_BUFFER,
             Alignment: 0,
-            Width : std::mem::size_of_val(&vertices) as u64,
+            Width : (std::mem::size_of_val(&vertices) * 2) as u64,
             Height : 1,
             DepthOrArraySize : 1,
             MipLevels : 1,
@@ -198,113 +188,27 @@ fn main() {
             Layout : D3D12_TEXTURE_LAYOUT_ROW_MAJOR,
         };
 
-        let mut vertex_buffer = std::ptr::null_mut::<ID3D12Resource>();
-
-        result = d3d12_device.as_ref().unwrap().CreateCommittedResource(
-            &vertex_buffer_heap_prop,
-            D3D12_HEAP_FLAG_NONE,
-            &vertex_buffer_resource_desc,
-            D3D12_RESOURCE_STATE_GENERIC_READ,
-            std::ptr::null_mut(),
-            &IID_ID3D12Resource,
-            &mut vertex_buffer as *mut *mut ID3D12Resource as *mut *mut c_void
-        );
-
-        // vertex buffer map
-        let mut vertex_buffer_map = std::ptr::null_mut::<Vec<lib::XMFLOAT3>>();
-
-        result = vertex_buffer.as_ref().unwrap().Map(0, std::ptr::null_mut(), &mut vertex_buffer_map as *mut *mut Vec<lib::XMFLOAT3> as *mut *mut c_void);
-        vertex_buffer_map.copy_from(vertices.as_ptr().cast::<Vec<lib::XMFLOAT3>>(), std::mem::size_of_val(&vertices) * 2 );
-        vertex_buffer.as_ref().unwrap().Unmap(0, std::ptr::null_mut() );
-
-
-        // create vertex buffer view
-        let vertex_buffer_view = D3D12_VERTEX_BUFFER_VIEW {
-            BufferLocation : vertex_buffer.as_ref().unwrap().GetGPUVirtualAddress(),
-            SizeInBytes : (std::mem::size_of_val(&vertices) * 2) as u32,
-            StrideInBytes : std::mem::size_of_val(&vertices[0]) as u32,
+        let committed_resource = lib::CommittedResource {
+            pHeapProperties: &vertex_buffer_heap_prop,
+            HeapFlags: D3D12_HEAP_FLAG_NONE,
+            pResourceDesc: &mut vertex_buffer_resource_desc,
+            InitialResourceState: D3D12_RESOURCE_STATE_GENERIC_READ,
+            pOptimizedClearValue: std::ptr::null_mut(),
         };
 
         // create indices
-        let indices: INDICES = [
+        let indices: lib::INDICES = vec![
             0, 1, 2,
             2, 1, 3
         ];
 
-        let mut index_buffer = std::ptr::null_mut::<ID3D12Resource>();
-        vertex_buffer_resource_desc.Width = std::mem::size_of::<INDICES>() as u64;
-
-        result = d3d12_device.as_ref().unwrap().CreateCommittedResource(
-            &vertex_buffer_heap_prop,
-            D3D12_HEAP_FLAG_NONE,
-            &vertex_buffer_resource_desc,
-            D3D12_RESOURCE_STATE_GENERIC_READ,
-            std::ptr::null_mut(),
-            &IID_ID3D12Resource,
-            &mut index_buffer as *mut *mut ID3D12Resource as *mut *mut c_void
-        );
-
-        // indices buffer map
-        let mut index_buffer_map = std::ptr::null_mut::<INDICES>();
-
-        result = index_buffer.as_ref().unwrap().Map(0, std::ptr::null_mut(), &mut index_buffer_map as *mut *mut INDICES as *mut *mut c_void);
-        index_buffer_map.copy_from(&indices, std::mem::size_of_val(&indices) );
-        index_buffer.as_ref().unwrap().Unmap(0, std::ptr::null_mut() );
-
-        // create index buffer view
-        let index_buffer_view = D3D12_INDEX_BUFFER_VIEW {
-            BufferLocation : index_buffer.as_ref().unwrap().GetGPUVirtualAddress(),
-            Format : DXGI_FORMAT_R16_UINT,
-            SizeInBytes : std::mem::size_of_val(&indices) as u32,
-        };
+        // create vertex resources
+        let vertex_resources = lib::create_vertex_buffer_view(d3d12_device, committed_resource, vertices, indices);
 
         // create shader object
-        let mut vertex_shader_blob = std::ptr::null_mut::<ID3DBlob>();
-        let mut pixel_shader_blob = std::ptr::null_mut::<ID3DBlob>();
         let mut shader_error_blob = std::ptr::null_mut::<ID3DBlob>();
-
-        result = D3DCompileFromFile(
-            get_relative_file_path_to_wide_str("shaders\\VertexShader.hlsl").as_ptr() as *const u16,
-            std::ptr::null_mut(),
-            D3D_COMPILE_STANDARD_FILE_INCLUDE,
-            CString::new("BasicVS").unwrap().as_ptr(),
-            CString::new("vs_5_0").unwrap().as_ptr(),
-            D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION,
-            0,
-            &mut vertex_shader_blob,
-            &mut shader_error_blob
-        );
-
-        result = D3DCompileFromFile(
-            get_relative_file_path_to_wide_str("shaders\\PixelShader.hlsl").as_ptr() as *const u16,
-            std::ptr::null_mut(),
-            D3D_COMPILE_STANDARD_FILE_INCLUDE,
-            CString::new("BasicPS").unwrap().as_ptr(),
-            CString::new("ps_5_0").unwrap().as_ptr(),
-            D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION,
-            0,
-            &mut pixel_shader_blob,
-            &mut shader_error_blob
-        );
-
-
-        // notify compilation status
-        const FILE_NOT_FOUND: i32 = ERROR_FILE_NOT_FOUND as i32;
-        const PATH_NOT_FOUND: i32 = ERROR_PATH_NOT_FOUND as i32;
-        match result {
-            FILE_NOT_FOUND => println!("{:}", "file not found"),
-            PATH_NOT_FOUND => println!("{:}", "path not found"),
-            S_OK => println!("{:}", "success compile shader"),
-            _ => {
-                // output compilation error message
-                let error_str = std::string::String::from_raw_parts(shader_error_blob.as_ref().unwrap().GetBufferPointer().cast::<u8>(), shader_error_blob.as_ref().unwrap().GetBufferSize(), 100000);
-
-                println!("{:?}", error_str);
-
-                panic!();
-
-            }
-        }
+        let vertex_shader_blob = lib::create_shader_resource("shaders\\VertexShader.hlsl", "BasicVS", "vs_5_0", shader_error_blob).unwrap();
+        let pixel_shader_blob = lib::create_shader_resource("shaders\\PixelShader.hlsl", "BasicPS", "ps_5_0", shader_error_blob).unwrap();
 
         // vertex layout
         let input_element: [D3D12_INPUT_ELEMENT_DESC; 1] = [
@@ -500,9 +404,9 @@ fn main() {
             cmd_list.as_ref().unwrap().RSSetScissorRects(1, &scissor_rect);
             cmd_list.as_ref().unwrap().SetComputeRootSignature(root_signature);
             cmd_list.as_ref().unwrap().IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-            cmd_list.as_ref().unwrap().IASetVertexBuffers(0, 1, &vertex_buffer_view);
-            cmd_list.as_ref().unwrap().IASetIndexBuffer(&index_buffer_view);
-            cmd_list.as_ref().unwrap().DrawIndexedInstanced(indices.len() as u32, 1, 0, 0, 0);
+            cmd_list.as_ref().unwrap().IASetVertexBuffers(0, 1, &vertex_resources.vertex_buffer_view);
+            cmd_list.as_ref().unwrap().IASetIndexBuffer(&vertex_resources.index_buffer_view);
+            cmd_list.as_ref().unwrap().DrawIndexedInstanced(vertex_resources.indices.len() as u32, 1, 0, 0, 0);
 
             // swap barrier state
             barrier_desc.u.Transition_mut().StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
@@ -540,20 +444,6 @@ fn main() {
     }
 }
 
-fn encode(source: &str) -> Vec<u16> {
-    source.encode_utf16().chain(Some(0)).collect()
-}
-
-fn get_relative_file_path_to_wide_str(s: &str) -> Vec<u16> {
-    let relative_path = Path::new(s);
-    let pwd = env::current_dir().unwrap();
-    let absolute_path = pwd.join(relative_path);
-    let wide_str = encode(absolute_path.to_str().unwrap());
-
-    wide_str
-}
-
-
 unsafe fn register_wndclass(class_name: &[u16]) -> bool {
     let mut winc = mem::zeroed::<WNDCLASSW>();
     winc.style = CS_HREDRAW | CS_VREDRAW;
@@ -570,7 +460,7 @@ unsafe fn create_window(class_name: &[u16]) -> HWND {
     CreateWindowExW(
         0,
         class_name.as_ptr(),
-        encode("DX12Sample").as_ptr(),
+        lib::utf16_to_vec("DX12Sample").as_ptr(),
         WS_OVERLAPPEDWINDOW,
         0, 0, WINDOW_WIDTH, WINDOW_HEIGHT,
         ptr::null_mut(),
