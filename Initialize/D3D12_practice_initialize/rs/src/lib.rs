@@ -405,7 +405,7 @@ pub fn create_shader_resource(path: &str, pEntrypoint: &str, pTarget: &str, erro
         d3dcompiler::D3DCOMPILE_DEBUG | d3dcompiler::D3DCOMPILE_SKIP_OPTIMIZATION,
         0,
         &mut shader_blob,
-        error_blob as *mut *mut winapi::um::d3dcommon::ID3D10Blob
+        error_blob as *mut *mut d3dcommon::ID3D10Blob
         )
     };
 
@@ -433,6 +433,81 @@ pub fn create_shader_resource(path: &str, pEntrypoint: &str, pTarget: &str, erro
     }
 }
 
+pub fn create_root_signature(device: *mut d3d12::ID3D12Device, error_blob: *mut d3dcommon::ID3DBlob) -> *mut d3d12::ID3D12RootSignature {
+
+    let mut root_signature = std::ptr::null_mut::<d3d12::ID3D12RootSignature>();
+
+    let mut root_signature_desc: d3d12::D3D12_ROOT_SIGNATURE_DESC = unsafe { mem::zeroed() };
+    root_signature_desc.Flags = d3d12::D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
+
+    // create root signature binary
+    let mut root_signature_blob = std::ptr::null_mut::<d3dcommon::ID3DBlob>();
+
+    let mut result = unsafe {
+            d3d12::D3D12SerializeRootSignature(
+            &root_signature_desc,
+            d3d12::D3D_ROOT_SIGNATURE_VERSION_1_0,
+            &mut root_signature_blob,
+            error_blob as *mut *mut d3dcommon::ID3D10Blob
+        )
+    };
+
+    result = unsafe {
+        device.as_ref().unwrap().
+            CreateRootSignature(
+            0,
+            root_signature_blob.as_ref().unwrap().GetBufferPointer(),
+            root_signature_blob.as_ref().unwrap().GetBufferSize(),
+            &d3d12::ID3D12RootSignature::uuidof(),
+            get_pointer_of_self_object(&mut root_signature)
+        )
+    };
+
+    unsafe {
+        root_signature_blob.as_ref().unwrap().Release()
+    };
+
+    root_signature
+}
+
+pub fn create_pipeline_state(device: *mut d3d12::ID3D12Device, gr_pipeline: d3d12::D3D12_GRAPHICS_PIPELINE_STATE_DESC) -> *mut d3d12::ID3D12PipelineState {
+
+    let mut pipeline_state = std::ptr::null_mut::<d3d12::ID3D12PipelineState>();
+
+    let result = unsafe {
+        device.as_ref().unwrap().
+            CreateGraphicsPipelineState(
+            &gr_pipeline,
+            &d3d12::ID3D12PipelineState::uuidof(),
+            get_pointer_of_self_object(&mut pipeline_state)
+        )
+    };
+
+    pipeline_state
+}
+
+pub fn set_viewport(width: i32, height: i32) -> d3d12::D3D12_VIEWPORT {
+    let mut viewport: d3d12::D3D12_VIEWPORT = unsafe { mem::zeroed() };
+    viewport.Width = width as f32;
+    viewport.Height = height as f32;
+    viewport.TopLeftX = 0.0;
+    viewport.TopLeftY = 0.0;
+    viewport.MaxDepth = 1.0;
+    viewport.MinDepth = 0.0;
+
+    viewport
+}
+
+pub fn set_scissor_rect(width: i32, height: i32) -> d3d12::D3D12_RECT {
+    let mut scissor_rect: d3d12::D3D12_RECT = unsafe { mem::zeroed() };
+    scissor_rect.top = 0;
+    scissor_rect.left = 0;
+    scissor_rect.right = scissor_rect.left + width;
+    scissor_rect.bottom = scissor_rect.top + height;
+
+    scissor_rect
+}
+
 pub fn utf16_to_vec(source: &str) -> Vec<u16> {
     source.encode_utf16().chain(Some(0)).collect()
 }
@@ -457,14 +532,4 @@ fn get_pointer_of_self_object<T>(object: &mut T) -> *mut *mut winapi::ctypes::c_
     // void_ptr as *mut *mut T as *mut *mut winapi::ctypes::c_void
 
     void_ptr
-}
-
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn some_test() {
-
-    }
 }
