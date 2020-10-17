@@ -1,22 +1,14 @@
 use winapi::{
     um::{
-        winuser::{ RegisterClassW, WNDCLASSW, CS_HREDRAW, CS_VREDRAW,
-                  LoadIconW, IDI_APPLICATION, LoadCursorW, IDC_ARROW,
-                  CreateWindowExW, ShowWindow, SW_NORMAL, UpdateWindow,
-                  GetMessageW, TranslateMessage, DispatchMessageW, MSG,
-                  WM_DESTROY, PostQuitMessage, DefWindowProcW, WS_OVERLAPPEDWINDOW },
-        wingdi::{ GetStockObject, WHITE_BRUSH },
+        winuser::{ GetMessageW, TranslateMessage, DispatchMessageW },
         d3d12::*,
-        d3d12sdklayers::*,
         d3dcommon::*,
         winbase::{ INFINITE },
         synchapi::{ CreateEventW, WaitForSingleObject },
         handleapi::{ CloseHandle },
     },
     shared::{
-        windef::{ HWND, HBRUSH },
-        minwindef::{ UINT, WPARAM, LPARAM, LRESULT, FLOAT },
-        winerror::{ SUCCEEDED },
+        minwindef::{ FLOAT },
         dxgi::*,
         dxgi1_2::*,
         dxgi1_3::*,
@@ -25,7 +17,6 @@ use winapi::{
         dxgiformat::*,
         dxgitype::*,
     },
-    ctypes::c_void,
 };
 
 use std::ptr;
@@ -61,23 +52,16 @@ fn main() {
 
     let mut dxgi_factory = ptr::null_mut();
     let mut swapchain = ptr::null_mut(); // IDXGISwapChain4
-    let mut debug_interface = ptr::null_mut::<ID3D12Debug>();
 
 
     if DEBUG {
         dxgi_factory = lib::create_dxgi_factory2::<IDXGIFactory6>(DXGI_CREATE_FACTORY_DEBUG).unwrap();
     } else {
-        // dxgi_factory = lib::create_dxgi_factory1::<IDXGIFactory1>().unwrap();
+        //dxgi_factory = lib::create_dxgi_factory1::<IDXGIFactory1>().unwrap();
     }
 
-
-    if SUCCEEDED(unsafe { D3D12GetDebugInterface(
-        &IID_ID3D12Debug,
-        &mut debug_interface as *mut *mut ID3D12Debug as *mut *mut c_void) }) && DEBUG {
-        unsafe {
-            debug_interface.as_ref().unwrap().EnableDebugLayer();
-        }
-    }
+    // enable debug layer
+    lib::enable_debug_layer(DEBUG);
 
     // device
     let d3d12_device = lib::create_d3d12_device().unwrap();
@@ -125,7 +109,6 @@ fn main() {
         &mut swapchain
     );
 
-
     // create Render Target View //
 
     // create discriptor heap
@@ -138,10 +121,8 @@ fn main() {
 
     let rtv_heaps = lib::create_descriptor_heap(d3d12_device, &heap_desc).unwrap();
 
-
     // bind render target view heap to swap chain buffer
     let back_buffers = lib::create_back_buffer(d3d12_device, swapchain, swapchain_desc1, rtv_heaps, std::ptr::null_mut());
-
 
     // create fence
     let fence = lib::create_fence(d3d12_device, 0, D3D12_FENCE_FLAG_NONE).unwrap();
@@ -295,15 +276,6 @@ fn main() {
     // scissor rectangle setting
     let scissor_rect = lib::set_scissor_rect(WINDOW_WIDTH, WINDOW_HEIGHT);
 
-
-    // enable debug layer
-    // if SUCCEEDED(d3d12_device.as_ref().unwrap().QueryInterface(
-    //     &IID_ID3D12Device,
-    //     &mut debug_interface as *mut *mut ID3D12DebugDevice as *mut *mut c_void)) && DEBUG {
-    //     debug_interface.as_ref().unwrap().ReportLiveDeviceObjects(D3D12_RLDO_DETAIL | D3D12_RLDO_IGNORE_INTERNAL);
-    //     debug_interface.as_ref().unwrap().Release();
-    // }
-
     win::show_window(hwnd);
 
 
@@ -312,9 +284,14 @@ fn main() {
 
     let mut msg = unsafe { mem::MaybeUninit::uninit().assume_init() };
     loop {
+        // quit loop
         if unsafe { GetMessageW(&mut msg, ptr::null_mut(), 0, 0) } == 0 {
+            // report leak
+            lib::report_live_objects(d3d12_device, DEBUG);
+
             return;
         }
+
         unsafe { TranslateMessage(&mut msg); };
         unsafe { DispatchMessageW(&mut msg); };
 

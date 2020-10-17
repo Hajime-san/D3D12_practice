@@ -1,25 +1,21 @@
 use winapi::{
     um::{
-        winuser::{ RegisterClassW, WNDCLASSW, CS_HREDRAW, CS_VREDRAW,
-                  LoadIconW, IDI_APPLICATION, LoadCursorW, IDC_ARROW,
-                  CreateWindowExW, ShowWindow, SW_NORMAL, UpdateWindow,
-                  GetMessageW, TranslateMessage, DispatchMessageW, MSG,
-                  WM_DESTROY, PostQuitMessage, DefWindowProcW, WS_OVERLAPPEDWINDOW },
-        wingdi::{ GetStockObject, WHITE_BRUSH },
+        winuser,
+        wingdi,
         d3d12,
-        d3d12sdklayers::*,
+        d3d12sdklayers,
         d3dcommon,
         d3dcompiler,
         unknwnbase,
-        winbase::{ INFINITE },
-        synchapi::{ CreateEventW, WaitForSingleObject },
-        handleapi::{ CloseHandle },
+        winbase,
+        synchapi,
+        handleapi,
     },
     shared::{
         windef,
         minwindef,
         winerror,
-        ntdef::{ LUID, WCHAR },
+        ntdef,
         guiddef::*,
         dxgi,
         dxgi1_2,
@@ -30,7 +26,7 @@ use winapi::{
         dxgiformat,
         dxgitype::*,
     },
-    ctypes::c_void,
+    ctypes,
     Interface,
 
 };
@@ -38,7 +34,7 @@ use winapi::{
 use std::ptr;
 use std::mem;
 use std::str;
-use std::path::{ Path, PathBuf };
+use std::path;
 use std::ffi::CString;
 use std::env;
 
@@ -67,6 +63,7 @@ pub struct VertexResources {
 
 
 pub fn create_dxgi_factory1<T: Interface>() -> Result<*mut T, winerror::HRESULT> {
+
     let mut obj = ptr::null_mut::<T>();
     let result = unsafe {
         dxgi::CreateDXGIFactory1(&T::uuidof(), get_pointer_of_self_object(&mut obj))
@@ -393,6 +390,7 @@ pub fn create_vertex_buffer_view(device: *mut d3d12::ID3D12Device, comitted_reso
 }
 
 pub fn create_shader_resource(path: &str, pEntrypoint: &str, pTarget: &str, error_blob: *mut d3dcommon::ID3DBlob) -> Result<*mut d3dcommon::ID3DBlob, winerror::HRESULT> {
+
     let mut shader_blob = std::ptr::null_mut::<d3dcommon::ID3DBlob>();
 
     let result = unsafe {
@@ -508,12 +506,63 @@ pub fn set_scissor_rect(width: i32, height: i32) -> d3d12::D3D12_RECT {
     scissor_rect
 }
 
+pub fn enable_debug_layer(is_debug: bool) {
+
+    if !is_debug {
+        return;
+    }
+
+    let mut debug_controller = ptr::null_mut::<d3d12sdklayers::ID3D12Debug>();
+
+    if winerror::SUCCEEDED(
+        unsafe {
+                d3d12::D3D12GetDebugInterface(
+                &d3d12sdklayers::ID3D12Debug::uuidof(),
+                get_pointer_of_self_object(&mut debug_controller)
+                )
+            }
+        )
+    {
+        unsafe {
+            debug_controller.as_ref().unwrap().EnableDebugLayer();
+        }
+    }
+}
+
+pub fn report_live_objects(device: *mut d3d12::ID3D12Device, is_debug: bool) {
+
+    if !is_debug {
+        return;
+    }
+
+    let mut debug_interface = ptr::null_mut::<d3d12sdklayers::ID3D12DebugDevice>();
+
+    if winerror::SUCCEEDED(
+        unsafe {
+                device.as_ref().unwrap().
+                    QueryInterface(
+                &d3d12sdklayers::ID3D12DebugDevice::uuidof(),
+            get_pointer_of_self_object(&mut debug_interface)
+                    )
+            }
+        ) {
+        unsafe {
+            debug_interface.as_ref().unwrap().ReportLiveDeviceObjects(d3d12sdklayers::D3D12_RLDO_DETAIL | d3d12sdklayers::D3D12_RLDO_IGNORE_INTERNAL);
+            debug_interface.as_ref().unwrap().Release();
+        };
+    }
+}
+
 pub fn utf16_to_vec(source: &str) -> Vec<u16> {
     source.encode_utf16().chain(Some(0)).collect()
 }
 
+// pub fn get_bytes_from_vec(vector: Vec) {
+//     (std::mem::size_of_val(&vertices) * 2)
+// }
+
 fn get_relative_file_path_to_wide_str(s: &str) -> Vec<u16> {
-    let relative_path = Path::new(s);
+    let relative_path = path::Path::new(s);
     let pwd = env::current_dir().unwrap();
     let absolute_path = pwd.join(relative_path);
     let wide_str = utf16_to_vec(absolute_path.to_str().unwrap());
@@ -521,15 +570,15 @@ fn get_relative_file_path_to_wide_str(s: &str) -> Vec<u16> {
     wide_str
 }
 
-fn get_pointer_of_self_object<T>(object: &mut T) -> *mut *mut winapi::ctypes::c_void {
+fn get_pointer_of_self_object<T>(object: &mut T) -> *mut *mut ctypes::c_void {
     // we need to convert the reference to a pointer
     let raw_ptr = object as *mut T;
 
     // and the pointer type we can cast to the c_void type required T
-    let void_ptr = raw_ptr as *mut *mut winapi::ctypes::c_void;
+    let void_ptr = raw_ptr as *mut *mut ctypes::c_void;
 
     // in one liner
-    // void_ptr as *mut *mut T as *mut *mut winapi::ctypes::c_void
+    // void_ptr as *mut *mut T as *mut *mut ctypes::c_void
 
     void_ptr
 }
