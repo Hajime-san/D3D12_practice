@@ -342,7 +342,7 @@ fn main() {
         // draw call
         unsafe { cmd_list.as_ref().unwrap().RSSetViewports(1, &viewport); };
         unsafe { cmd_list.as_ref().unwrap().RSSetScissorRects(1, &scissor_rect); };
-        unsafe { cmd_list.as_ref().unwrap().SetComputeRootSignature(root_signature); };
+        unsafe { cmd_list.as_ref().unwrap().SetGraphicsRootSignature(root_signature); };
         unsafe { cmd_list.as_ref().unwrap().IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST); };
         unsafe { cmd_list.as_ref().unwrap().IASetVertexBuffers(0, 1, &vertex_resources.vertex_buffer_view); };
         unsafe { cmd_list.as_ref().unwrap().IASetIndexBuffer(&vertex_resources.index_buffer_view); };
