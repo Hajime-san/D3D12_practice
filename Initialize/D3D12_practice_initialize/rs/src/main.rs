@@ -147,7 +147,6 @@ fn main() {
         }
     ];
 
-
     // create vertex buffer
 
     // settings of vertex heap
@@ -163,7 +162,7 @@ fn main() {
     let mut vertex_buffer_resource_desc = D3D12_RESOURCE_DESC {
         Dimension : D3D12_RESOURCE_DIMENSION_BUFFER,
         Alignment: 0,
-        Width : (std::mem::size_of_val(&vertices) * 3) as u64,
+        Width : (std::mem::size_of_val(&vertices) * &vertices.len()) as u64,
         Height : 1,
         DepthOrArraySize : 1,
         MipLevels : 1,
