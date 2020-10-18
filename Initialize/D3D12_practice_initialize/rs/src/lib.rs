@@ -38,11 +38,21 @@ use std::path;
 use std::ffi::CString;
 use std::env;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct XMFLOAT3 {
     pub x: f32,
     pub y: f32,
     pub z: f32
+}
+#[derive(Debug, Clone, Copy)]
+pub struct XMFLOAT2 {
+    pub x: f32,
+    pub y: f32,
+}
+#[derive(Debug, Clone, Copy)]
+pub struct Vertex {
+    pub position: XMFLOAT3,
+    pub uv: XMFLOAT2,
 }
 pub type INDICES = Vec<u16>;
 
@@ -56,8 +66,6 @@ pub struct CommittedResource {
 pub struct VertexResources {
     pub vertex_buffer_view: d3d12::D3D12_VERTEX_BUFFER_VIEW,
     pub index_buffer_view: d3d12::D3D12_INDEX_BUFFER_VIEW,
-    pub vertices: Vec<XMFLOAT3>, // return ownership
-    pub indices: INDICES // return ownership
 }
 
 
@@ -295,7 +303,7 @@ pub fn create_fence(device: *mut d3d12::ID3D12Device, InitialValue: i32, Flags: 
 }
 
 
-pub fn create_vertex_buffer_view(device: *mut d3d12::ID3D12Device, comitted_resource: CommittedResource, vertices: Vec<XMFLOAT3>, indices: INDICES) -> VertexResources {
+pub fn create_vertex_buffer_view(device: *mut d3d12::ID3D12Device, comitted_resource: CommittedResource, vertices: Vec<Vertex>, indices: INDICES) -> VertexResources {
 
     let mut vertex_buffer = std::ptr::null_mut::<d3d12::ID3D12Resource>();
 
@@ -313,7 +321,7 @@ pub fn create_vertex_buffer_view(device: *mut d3d12::ID3D12Device, comitted_reso
     };
 
     // vertex buffer map
-    let mut vertex_buffer_map = std::ptr::null_mut::<Vec<XMFLOAT3>>();
+    let mut vertex_buffer_map = std::ptr::null_mut::<Vec<Vertex>>();
 
     // map buffer to GPU
     result = unsafe {
@@ -321,7 +329,7 @@ pub fn create_vertex_buffer_view(device: *mut d3d12::ID3D12Device, comitted_reso
         Map(0, std::ptr::null_mut(), get_pointer_of_self_object(&mut vertex_buffer_map))
     };
     unsafe {
-        vertex_buffer_map.copy_from(vertices.as_ptr().cast::<Vec<XMFLOAT3>>(), std::mem::size_of_val(&vertices) * 2 )
+        vertex_buffer_map.copy_from_nonoverlapping(vertices.as_ptr().cast::<Vec<Vertex>>(), std::mem::size_of_val(&vertices) * 3 )
     };
     unsafe {
         vertex_buffer.as_ref().unwrap().
@@ -332,7 +340,7 @@ pub fn create_vertex_buffer_view(device: *mut d3d12::ID3D12Device, comitted_reso
     // create vertex buffer view
     let vertex_buffer_view =  d3d12::D3D12_VERTEX_BUFFER_VIEW {
         BufferLocation : unsafe { vertex_buffer.as_ref().unwrap().GetGPUVirtualAddress() },
-        SizeInBytes : (std::mem::size_of_val(&vertices) * 2) as u32,
+        SizeInBytes : (std::mem::size_of_val(&vertices) * 3) as u32,
         StrideInBytes : std::mem::size_of_val(&vertices[0]) as u32,
     };
 
@@ -365,7 +373,7 @@ pub fn create_vertex_buffer_view(device: *mut d3d12::ID3D12Device, comitted_reso
         Map(0, std::ptr::null_mut(), get_pointer_of_self_object(&mut index_buffer_map))
     };
     unsafe {
-        index_buffer_map.copy_from(indices.as_ptr().cast::<INDICES>(), std::mem::size_of_val(&indices) * 2)
+        index_buffer_map.copy_from_nonoverlapping(indices.as_ptr().cast::<INDICES>(), std::mem::size_of_val(&indices) * 2)
     };
     unsafe {
         index_buffer.as_ref().unwrap().
@@ -382,8 +390,6 @@ pub fn create_vertex_buffer_view(device: *mut d3d12::ID3D12Device, comitted_reso
     let resources = VertexResources {
         vertex_buffer_view: vertex_buffer_view,
         index_buffer_view: index_buffer_view,
-        vertices: vertices,
-        indices: indices
     };
 
     resources

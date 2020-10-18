@@ -80,3 +80,9 @@ pub fn show_window(hwnd: windef::HWND) {
         winuser::UpdateWindow(hwnd);
     }
 }
+
+pub fn quit_window(msg: *mut winuser::MSG) -> bool {
+   let result = unsafe { winuser::GetMessageW(msg, ptr::null_mut(), 0, 0) } == 0;
+
+   result
+}

@@ -128,20 +128,25 @@ fn main() {
     let fence = lib::create_fence(d3d12_device, 0, D3D12_FENCE_FLAG_NONE).unwrap();
 
     // create vertices
-    let vertices: Vec<lib::XMFLOAT3>  = vec![
-        lib::XMFLOAT3 {
-            x: -0.4, y: -0.7, z: 0.0
+    let vertices  = vec![
+        lib::Vertex {
+            position: lib::XMFLOAT3 { x: -0.4, y: -0.7, z: 0.0 },
+            uv: lib::XMFLOAT2 { x: 0.0, y: 1.0 },
         },
-        lib::XMFLOAT3 {
-            x: -0.4, y: 0.7, z: 0.0
+        lib::Vertex {
+            position: lib::XMFLOAT3 { x: -0.4, y: 0.7, z: 0.0 },
+            uv: lib::XMFLOAT2 { x: 0.0, y: 0.0 },
         },
-        lib::XMFLOAT3 {
-            x: 0.4, y: -0.7, z: 0.0
+        lib::Vertex {
+            position: lib::XMFLOAT3 { x: 0.4, y: -0.7, z: 0.0 },
+            uv: lib::XMFLOAT2 { x: 1.0, y: 1.0 },
         },
-        lib::XMFLOAT3 {
-            x: 0.4, y: 0.7, z: 0.0
+        lib::Vertex {
+            position: lib::XMFLOAT3 { x: 0.4, y: 0.7, z: 0.0 },
+            uv: lib::XMFLOAT2 { x: 1.0, y: 0.0 },
         }
     ];
+
 
     // create vertex buffer
 
@@ -158,7 +163,7 @@ fn main() {
     let mut vertex_buffer_resource_desc = D3D12_RESOURCE_DESC {
         Dimension : D3D12_RESOURCE_DIMENSION_BUFFER,
         Alignment: 0,
-        Width : (std::mem::size_of_val(&vertices) * 2) as u64,
+        Width : (std::mem::size_of_val(&vertices) * 3) as u64,
         Height : 1,
         DepthOrArraySize : 1,
         MipLevels : 1,
@@ -186,7 +191,7 @@ fn main() {
     ];
 
     // create vertex resources
-    let vertex_resources = lib::create_vertex_buffer_view(d3d12_device, committed_resource, vertices, indices);
+    let vertex_resources = lib::create_vertex_buffer_view(d3d12_device, committed_resource, vertices.clone(), indices.clone());
 
     // create shader object
     let shader_error_blob = std::ptr::null_mut::<ID3DBlob>();
@@ -285,7 +290,7 @@ fn main() {
     let mut msg = unsafe { mem::MaybeUninit::uninit().assume_init() };
     loop {
         // quit loop
-        if unsafe { GetMessageW(&mut msg, ptr::null_mut(), 0, 0) } == 0 {
+        if win::quit_window(&mut msg) {
             // report leak
             lib::report_live_objects(d3d12_device, DEBUG);
 
@@ -346,7 +351,7 @@ fn main() {
         unsafe { cmd_list.as_ref().unwrap().IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST); };
         unsafe { cmd_list.as_ref().unwrap().IASetVertexBuffers(0, 1, &vertex_resources.vertex_buffer_view); };
         unsafe { cmd_list.as_ref().unwrap().IASetIndexBuffer(&vertex_resources.index_buffer_view); };
-        unsafe { cmd_list.as_ref().unwrap().DrawIndexedInstanced(vertex_resources.indices.len() as u32, 1, 0, 0, 0); };
+        unsafe { cmd_list.as_ref().unwrap().DrawIndexedInstanced(indices.len() as u32, 1, 0, 0, 0); };
 
         // swap barrier state
         unsafe { barrier_desc.u.Transition_mut().StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET };
