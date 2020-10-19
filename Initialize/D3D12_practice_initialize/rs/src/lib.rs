@@ -38,6 +38,8 @@ use std::path;
 use std::ffi::CString;
 use std::env;
 
+use rand::prelude::*;
+
 #[derive(Debug, Clone, Copy)]
 pub struct XMFLOAT3 {
     pub x: f32,
@@ -54,6 +56,13 @@ pub struct Vertex {
     pub position: XMFLOAT3,
     pub uv: XMFLOAT2,
 }
+#[derive(Debug, Clone, Copy)]
+pub struct TexRGBA {
+    r: u8,
+    g: u8,
+    b: u8,
+    a: u8,
+}
 pub type INDICES = Vec<u16>;
 
 pub struct CommittedResource {
@@ -66,6 +75,7 @@ pub struct CommittedResource {
 pub struct VertexResources {
     pub vertex_buffer_view: d3d12::D3D12_VERTEX_BUFFER_VIEW,
     pub index_buffer_view: d3d12::D3D12_INDEX_BUFFER_VIEW,
+    pub buffer_object: *mut d3d12::ID3D12Resource,
 }
 
 
@@ -390,6 +400,7 @@ pub fn create_vertex_buffer_view(device: *mut d3d12::ID3D12Device, comitted_reso
     let resources = VertexResources {
         vertex_buffer_view: vertex_buffer_view,
         index_buffer_view: index_buffer_view,
+        buffer_object: vertex_buffer
     };
 
     resources
@@ -511,6 +522,22 @@ pub fn set_scissor_rect(width: i32, height: i32) -> d3d12::D3D12_RECT {
 
     scissor_rect
 }
+
+// pub fn create_random_texture() -> Vec<TexRGBA> {
+//     let mut data: Vec<TexRGBA> = Vec::with_capacity(256);
+
+//     let mut rng = rand::thread_rng();
+
+//     for v in data.iter_mut() {
+//         let n1: u8 = rng.gen();
+//         v.r = n1 % 255;
+//         v.g = n1 % 255;
+//         v.b = n1 % 255;
+//         v.r = 255;
+//     }
+
+//     data
+// }
 
 pub fn enable_debug_layer(is_debug: bool) {
 

@@ -198,7 +198,7 @@ fn main() {
     let pixel_shader_blob = lib::create_shader_resource("shaders\\PixelShader.hlsl", "BasicPS", "ps_5_0", shader_error_blob).unwrap();
 
     // vertex layout
-    let input_element: [D3D12_INPUT_ELEMENT_DESC; 1] = [
+    let input_element: [D3D12_INPUT_ELEMENT_DESC; 2] = [
         D3D12_INPUT_ELEMENT_DESC {
             SemanticName: CString::new("POSITION").unwrap().into_raw(),
             SemanticIndex: 0,
@@ -207,7 +207,16 @@ fn main() {
             AlignedByteOffset: D3D12_APPEND_ALIGNED_ELEMENT,
             InputSlotClass: D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,
             InstanceDataStepRate: 0,
-        }
+        },
+        D3D12_INPUT_ELEMENT_DESC {
+            SemanticName: CString::new("TEXCOORD").unwrap().into_raw(),
+            SemanticIndex: 0,
+            Format: DXGI_FORMAT_R32G32_FLOAT,
+            InputSlot: 0,
+            AlignedByteOffset: D3D12_APPEND_ALIGNED_ELEMENT,
+            InputSlotClass: D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,
+            InstanceDataStepRate: 0,
+        },
     ];
 
     // create root signature
