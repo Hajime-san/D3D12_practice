@@ -63,8 +63,8 @@ pub struct TexRGBA {
     b: u8,
     a: u8,
 }
-pub type INDICES = Vec<u16>;
 
+#[derive(Debug, Clone, Copy)]
 pub struct CommittedResource {
     pub pHeapProperties: *const d3d12::D3D12_HEAP_PROPERTIES,
     pub HeapFlags: d3d12::D3D12_HEAP_FLAGS,
@@ -78,6 +78,31 @@ pub struct VertexResources {
     pub buffer_object: *mut d3d12::ID3D12Resource,
 }
 
+// #[derive(Debug, Clone, Copy, Default)]
+pub struct BufferResources<T> {
+    pub buffer_view: T,
+    pub buffer_object: *mut d3d12::ID3D12Resource,
+}
+
+// impl BufferResources<d3d12::D3D12_VERTEX_BUFFER_VIEW> {
+
+//     fn new(self) -> BufferResources<d3d12::D3D12_VERTEX_BUFFER_VIEW> {
+//         BufferResources {
+//             buffer_view: self.buffer_view,
+//             buffer_object: self.buffer_object
+//         }
+//     }
+// }
+
+// impl BufferResources<d3d12::D3D12_INDEX_BUFFER_VIEW> {
+
+//     fn new(self) -> BufferResources<d3d12::D3D12_INDEX_BUFFER_VIEW> {
+//         BufferResources {
+//             buffer_view: self.buffer_view,
+//             buffer_object: self.buffer_object
+//         }
+//     }
+// }
 
 
 pub fn create_dxgi_factory1<T: Interface>() -> Result<*mut T, winerror::HRESULT> {
@@ -312,10 +337,9 @@ pub fn create_fence(device: *mut d3d12::ID3D12Device, InitialValue: i32, Flags: 
     }
 }
 
+fn create_buffer_map<T>(device: *mut d3d12::ID3D12Device, comitted_resource: CommittedResource, resource: Vec<T>) -> *mut d3d12::ID3D12Resource {
 
-pub fn create_vertex_buffer_view(device: *mut d3d12::ID3D12Device, comitted_resource: CommittedResource, vertices: Vec<Vertex>, indices: INDICES) -> VertexResources {
-
-    let mut vertex_buffer = std::ptr::null_mut::<d3d12::ID3D12Resource>();
+    let mut buffer = std::ptr::null_mut::<d3d12::ID3D12Resource>();
 
     let mut result = unsafe {
                 device.as_ref().unwrap().
@@ -326,85 +350,70 @@ pub fn create_vertex_buffer_view(device: *mut d3d12::ID3D12Device, comitted_reso
                     comitted_resource.InitialResourceState,
                     comitted_resource.pOptimizedClearValue,
                     &d3d12::ID3D12Resource::uuidof(),
-                    get_pointer_of_self_object(&mut vertex_buffer)
+                    get_pointer_of_self_object(&mut buffer)
             )
     };
 
-    // vertex buffer map
-    let mut vertex_buffer_map = std::ptr::null_mut::<Vec<Vertex>>();
+    // buffer map
+    let mut buffer_map = std::ptr::null_mut::<Vec<T>>();
 
     // map buffer to GPU
     result = unsafe {
-        vertex_buffer.as_ref().unwrap().
-        Map(0, std::ptr::null_mut(), get_pointer_of_self_object(&mut vertex_buffer_map))
+        buffer.as_ref().unwrap().
+        Map(0, std::ptr::null_mut(), get_pointer_of_self_object(&mut buffer_map))
     };
     unsafe {
-        vertex_buffer_map.copy_from_nonoverlapping(vertices.as_ptr().cast::<Vec<Vertex>>(), std::mem::size_of_val(&vertices) )
+        buffer_map.copy_from_nonoverlapping(resource.as_ptr().cast::<Vec<T>>(), std::mem::size_of_val(&resource) )
     };
     unsafe {
-        vertex_buffer.as_ref().unwrap().
+        buffer.as_ref().unwrap().
         Unmap(0, std::ptr::null_mut() )
     };
 
+    buffer
+}
 
-    // create vertex buffer view
-    let vertex_buffer_view =  d3d12::D3D12_VERTEX_BUFFER_VIEW {
-        BufferLocation : unsafe { vertex_buffer.as_ref().unwrap().GetGPUVirtualAddress() },
-        SizeInBytes : (std::mem::size_of_val(&vertices) * (&vertices.len() - 1 )) as u32,
-        StrideInBytes : std::mem::size_of_val(&vertices[0]) as u32,
+pub fn create_vertex_buffer_resources(device: *mut d3d12::ID3D12Device, comitted_resource: CommittedResource, resource: Vec<Vertex>) -> BufferResources<d3d12::D3D12_VERTEX_BUFFER_VIEW> {
+
+    let tmp_resource = resource.clone();
+
+    let buffer = create_buffer_map(device, comitted_resource, resource);
+
+    let buffer_view = d3d12::D3D12_VERTEX_BUFFER_VIEW {
+        BufferLocation : unsafe { buffer.as_ref().unwrap().GetGPUVirtualAddress() },
+        SizeInBytes : (std::mem::size_of_val(&tmp_resource) * (&tmp_resource.len() - 1 )) as u32,
+        StrideInBytes : std::mem::size_of_val(&tmp_resource[0]) as u32,
     };
 
-    // index buffer
-    let mut index_buffer = std::ptr::null_mut::<d3d12::ID3D12Resource>();
+    BufferResources {
+        buffer_view: buffer_view,
+        buffer_object: buffer
+    }
+}
+
+pub fn create_index_buffer_resources(device: *mut d3d12::ID3D12Device, comitted_resource: CommittedResource, resource: Vec<u16>) -> BufferResources<d3d12::D3D12_INDEX_BUFFER_VIEW> {
+
+    let tmp_resource = resource.clone();
+
     let pResourceDesc = comitted_resource.pResourceDesc as *mut d3d12::D3D12_RESOURCE_DESC;
     unsafe {
-        (*pResourceDesc).Width = (std::mem::size_of_val(&indices) * &indices.len()) as u64
+        (*pResourceDesc).Width = (std::mem::size_of_val(&resource) * &resource.len()) as u64
     };
 
-    result = unsafe {
-        device.as_ref().unwrap().
-            CreateCommittedResource(
-                comitted_resource.pHeapProperties,
-                comitted_resource.HeapFlags,
-                comitted_resource.pResourceDesc,
-                comitted_resource.InitialResourceState,
-                comitted_resource.pOptimizedClearValue,
-                &d3d12::ID3D12Resource::uuidof(),
-                get_pointer_of_self_object(&mut index_buffer)
-            )
-    };
+    let buffer = create_buffer_map(device, comitted_resource, resource);
 
-    // indices buffer map
-    let mut index_buffer_map = std::ptr::null_mut::<INDICES>();
-
-    // map buffer to GPU
-    result = unsafe {
-        index_buffer.as_ref().unwrap().
-        Map(0, std::ptr::null_mut(), get_pointer_of_self_object(&mut index_buffer_map))
-    };
-    unsafe {
-        index_buffer_map.copy_from_nonoverlapping(indices.as_ptr().cast::<INDICES>(), std::mem::size_of_val(&indices))
-    };
-    unsafe {
-        index_buffer.as_ref().unwrap().
-        Unmap(0, std::ptr::null_mut() );
-    };
-
-    // create index buffer view
-    let index_buffer_view = d3d12::D3D12_INDEX_BUFFER_VIEW {
-        BufferLocation : unsafe { index_buffer.as_ref().unwrap().GetGPUVirtualAddress() },
+    let buffer_view = d3d12::D3D12_INDEX_BUFFER_VIEW {
+        BufferLocation : unsafe { buffer.as_ref().unwrap().GetGPUVirtualAddress() },
         Format : dxgiformat::DXGI_FORMAT_R16_UINT,
-        SizeInBytes : (std::mem::size_of_val(&indices) * (&indices.len() - 1 )) as u32,
+        SizeInBytes : (std::mem::size_of_val(&tmp_resource) * (&tmp_resource.len() - 1 )) as u32,
     };
 
-    let resources = VertexResources {
-        vertex_buffer_view: vertex_buffer_view,
-        index_buffer_view: index_buffer_view,
-        buffer_object: vertex_buffer
-    };
-
-    resources
+    BufferResources {
+        buffer_view: buffer_view,
+        buffer_object: buffer
+    }
 }
+
 
 pub fn create_shader_resource(path: &str, pEntrypoint: &str, pTarget: &str, error_blob: *mut d3dcommon::ID3DBlob) -> Result<*mut d3dcommon::ID3DBlob, winerror::HRESULT> {
 

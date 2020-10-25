@@ -175,7 +175,7 @@ fn main() {
         Layout : D3D12_TEXTURE_LAYOUT_ROW_MAJOR,
     };
 
-    let committed_resource = lib::CommittedResource {
+    let comitted_resource = lib::CommittedResource {
         pHeapProperties: &vertex_buffer_heap_prop,
         HeapFlags: D3D12_HEAP_FLAG_NONE,
         pResourceDesc: &mut vertex_buffer_resource_desc,
@@ -184,13 +184,16 @@ fn main() {
     };
 
     // create indices
-    let indices: lib::INDICES = vec![
+    let indices = vec![
         0, 1, 2,
         2, 1, 3
     ];
 
     // create vertex resources
-    let vertex_resources = lib::create_vertex_buffer_view(d3d12_device, committed_resource, vertices.clone(), indices.clone());
+
+    let vertex_buffer = lib::create_vertex_buffer_resources(d3d12_device, comitted_resource, vertices.clone());
+
+    let index_buffer = lib::create_index_buffer_resources(d3d12_device, comitted_resource, indices.clone());
 
     // create shader object
     let shader_error_blob = std::ptr::null_mut::<ID3DBlob>();
@@ -357,8 +360,8 @@ fn main() {
         unsafe { cmd_list.as_ref().unwrap().RSSetScissorRects(1, &scissor_rect); };
         unsafe { cmd_list.as_ref().unwrap().SetGraphicsRootSignature(root_signature); };
         unsafe { cmd_list.as_ref().unwrap().IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST); };
-        unsafe { cmd_list.as_ref().unwrap().IASetVertexBuffers(0, 1, &vertex_resources.vertex_buffer_view); };
-        unsafe { cmd_list.as_ref().unwrap().IASetIndexBuffer(&vertex_resources.index_buffer_view); };
+        unsafe { cmd_list.as_ref().unwrap().IASetVertexBuffers(0, 1, &vertex_buffer.buffer_view); };
+        unsafe { cmd_list.as_ref().unwrap().IASetIndexBuffer(&index_buffer.buffer_view); };
         unsafe { cmd_list.as_ref().unwrap().DrawIndexedInstanced(indices.len() as u32, 1, 0, 0, 0); };
 
         // swap barrier state
