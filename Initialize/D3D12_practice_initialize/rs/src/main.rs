@@ -17,6 +17,7 @@ use winapi::{
         dxgiformat::*,
         dxgitype::*,
     },
+    ctypes,
 };
 
 use std::ptr;
@@ -127,6 +128,66 @@ fn main() {
     // create fence
     let fence = lib::create_fence(d3d12_device, 0, D3D12_FENCE_FLAG_NONE).unwrap();
 
+    // create texture buffer for uploade resource
+    let texture = lib::create_texture_buffer_from_file("assets\\images\\directx.png");
+
+    let texture_buffer_heap_prop = D3D12_HEAP_PROPERTIES {
+        Type : D3D12_HEAP_TYPE_UPLOAD,
+        CPUPageProperty : D3D12_CPU_PAGE_PROPERTY_UNKNOWN,
+        MemoryPoolPreference : D3D12_MEMORY_POOL_UNKNOWN,
+        CreationNodeMask: 0,
+        VisibleNodeMask: 0,
+    };
+
+    let mut texture_buffer_resource_desc = D3D12_RESOURCE_DESC {
+        Dimension : D3D12_RESOURCE_DIMENSION_BUFFER,
+        Alignment: 0,
+        Width : texture.slice_size,
+        Height : 1,
+        DepthOrArraySize : 1,
+        MipLevels : 1,
+        Format : DXGI_FORMAT_UNKNOWN,
+        SampleDesc: DXGI_SAMPLE_DESC {
+            Count : 1,
+            Quality: 0,
+        },
+        Flags : D3D12_RESOURCE_FLAG_NONE,
+        Layout : D3D12_TEXTURE_LAYOUT_ROW_MAJOR,
+    };
+
+    let mut upload_buffer = std::ptr::null_mut::<ID3D12Resource>();
+
+    result = unsafe {
+        d3d12_device.as_ref().unwrap().CreateCommittedResource(&texture_buffer_heap_prop, D3D12_HEAP_FLAG_NONE, &texture_buffer_resource_desc, D3D12_RESOURCE_STATE_GENERIC_READ, std::ptr::null_mut(), &IID_ID3D12Resource, upload_buffer as *mut *mut ID3D12Resource as *mut *mut ctypes::c_void)
+    };
+
+    // create buffer for coyp source to destination
+
+    let texture_buffer_destination_prop = D3D12_HEAP_PROPERTIES {
+        Type : D3D12_HEAP_TYPE_DEFAULT,
+        CPUPageProperty : D3D12_CPU_PAGE_PROPERTY_UNKNOWN,
+        MemoryPoolPreference : D3D12_MEMORY_POOL_UNKNOWN,
+        CreationNodeMask: 0,
+        VisibleNodeMask: 0,
+    };
+
+    texture_buffer_resource_desc.Format = texture.DXGI_FORMAT;
+    texture_buffer_resource_desc.Width = texture.width;
+    texture_buffer_resource_desc.Height = texture.height;
+    texture_buffer_resource_desc.DepthOrArraySize = 1;
+    texture_buffer_resource_desc.MipLevels = 1;
+    texture_buffer_resource_desc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+    texture_buffer_resource_desc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+
+    let mut copy_buffer = std::ptr::null_mut::<ID3D12Resource>();
+
+    result = unsafe {
+        d3d12_device.as_ref().unwrap().CreateCommittedResource(&texture_buffer_destination_prop, D3D12_HEAP_FLAG_NONE, &texture_buffer_resource_desc, D3D12_RESOURCE_STATE_COPY_DEST, std::ptr::null_mut(), &IID_ID3D12Resource, copy_buffer as *mut *mut ID3D12Resource as *mut *mut ctypes::c_void)
+    };
+
+    println!("{:?}", result);
+
+
     // create vertices
     let vertices  = vec![
         lib::Vertex {
@@ -178,7 +239,7 @@ fn main() {
     let comitted_resource = lib::CommittedResource {
         pHeapProperties: &vertex_buffer_heap_prop,
         HeapFlags: D3D12_HEAP_FLAG_NONE,
-        pResourceDesc: &mut vertex_buffer_resource_desc,
+        pResourceDesc: &vertex_buffer_resource_desc,
         InitialResourceState: D3D12_RESOURCE_STATE_GENERIC_READ,
         pOptimizedClearValue: std::ptr::null_mut(),
     };

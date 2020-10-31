@@ -57,12 +57,12 @@ pub struct Vertex {
 }
 #[derive(Debug, Clone, Copy)]
 pub struct Image {
-    width: usize,
-    height: usize,
-    DXGI_FORMAT: dxgiformat::DXGI_FORMAT,
-    row_size: usize,
-    slice_size: usize,
-    address: *const image::DynamicImage,
+    pub width: u64,
+    pub height: u32,
+    pub DXGI_FORMAT: dxgiformat::DXGI_FORMAT,
+    pub row_size: usize,
+    pub slice_size: u64,
+    pub address: *const image::DynamicImage,
     // buffer_object: *const d3d12::ID3D12Resource,
 }
 
@@ -372,6 +372,7 @@ pub fn create_index_buffer_resources(device: *mut d3d12::ID3D12Device, comitted_
 
     let tmp_resource = resource.clone();
 
+    // reuse vertex buffer desc
     let pResourceDesc = comitted_resource.pResourceDesc as *mut d3d12::D3D12_RESOURCE_DESC;
     unsafe {
         (*pResourceDesc).Width = (std::mem::size_of_val(&resource) * &resource.len()) as u64
@@ -416,11 +417,11 @@ pub fn create_texture_buffer_from_file(path: &str) -> Image {
     };
 
     Image {
-        width: img.width() as usize,
-        height: img.height() as usize,
+        width: img.width() as u64,
+        height: img.height() as u32,
         DXGI_FORMAT: DXGI_FORMAT,
         row_size: row_size,
-        slice_size: slice_size,
+        slice_size: slice_size as u64,
         address: &img as *const _,
     }
 }
@@ -621,16 +622,16 @@ fn get_pointer_of_self_object<T>(object: &mut T) -> *mut *mut ctypes::c_void {
     void_ptr
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+// #[cfg(test)]
+// mod tests {
+//     use super::*;
 
-    #[test]
-    fn some_test() {
+//     #[test]
+//     fn some_test() {
 
-        let img = create_texture_buffer_from_file("assets\\images\\directx.png");
+//         let img = create_texture_buffer_from_file("assets\\images\\directx.png");
 
-        println!("{:?}", img);
+//         println!("{:?}", img);
 
-    }
-}
+//     }
+// }
