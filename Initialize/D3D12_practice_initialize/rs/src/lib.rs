@@ -37,8 +37,7 @@ use std::str;
 use std::path;
 use std::ffi::CString;
 use std::env;
-
-use rand::prelude::*;
+use image::{ GenericImageView };
 
 #[derive(Debug, Clone, Copy)]
 pub struct XMFLOAT3 {
@@ -57,11 +56,14 @@ pub struct Vertex {
     pub uv: XMFLOAT2,
 }
 #[derive(Debug, Clone, Copy)]
-pub struct TexRGBA {
-    r: u8,
-    g: u8,
-    b: u8,
-    a: u8,
+pub struct Image {
+    width: usize,
+    height: usize,
+    DXGI_FORMAT: dxgiformat::DXGI_FORMAT,
+    row_size: usize,
+    slice_size: usize,
+    address: *const image::DynamicImage,
+    // buffer_object: *const d3d12::ID3D12Resource,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -72,37 +74,12 @@ pub struct CommittedResource {
     pub InitialResourceState: d3d12::D3D12_RESOURCE_STATES,
     pub pOptimizedClearValue: *const d3d12::D3D12_CLEAR_VALUE
 }
-pub struct VertexResources {
-    pub vertex_buffer_view: d3d12::D3D12_VERTEX_BUFFER_VIEW,
-    pub index_buffer_view: d3d12::D3D12_INDEX_BUFFER_VIEW,
-    pub buffer_object: *mut d3d12::ID3D12Resource,
-}
 
 // #[derive(Debug, Clone, Copy, Default)]
 pub struct BufferResources<T> {
     pub buffer_view: T,
-    pub buffer_object: *mut d3d12::ID3D12Resource,
+    pub buffer_object: *const d3d12::ID3D12Resource,
 }
-
-// impl BufferResources<d3d12::D3D12_VERTEX_BUFFER_VIEW> {
-
-//     fn new(self) -> BufferResources<d3d12::D3D12_VERTEX_BUFFER_VIEW> {
-//         BufferResources {
-//             buffer_view: self.buffer_view,
-//             buffer_object: self.buffer_object
-//         }
-//     }
-// }
-
-// impl BufferResources<d3d12::D3D12_INDEX_BUFFER_VIEW> {
-
-//     fn new(self) -> BufferResources<d3d12::D3D12_INDEX_BUFFER_VIEW> {
-//         BufferResources {
-//             buffer_view: self.buffer_view,
-//             buffer_object: self.buffer_object
-//         }
-//     }
-// }
 
 
 pub fn create_dxgi_factory1<T: Interface>() -> Result<*mut T, winerror::HRESULT> {
@@ -145,9 +122,9 @@ pub fn create_d3d12_device() -> Result<*mut d3d12::ID3D12Device, winerror::HRESU
 
         if unsafe {
                 d3d12::D3D12CreateDevice(
-                ptr::null_mut(),
-                *lv, &d3d12::ID3D12Device::uuidof(),
-                get_pointer_of_self_object(&mut obj)
+                    ptr::null_mut(),
+                    *lv, &d3d12::ID3D12Device::uuidof(),
+                    get_pointer_of_self_object(&mut obj)
                 )
                 == winerror::S_OK
             }
@@ -310,8 +287,8 @@ pub fn create_back_buffer(device: *mut d3d12::ID3D12Device, swapchain: *mut dxgi
         }
 
         handle.ptr += unsafe {
-                        device.as_ref().unwrap().GetDescriptorHandleIncrementSize(d3d12::D3D12_DESCRIPTOR_HEAP_TYPE_RTV) as usize
-                      }
+            device.as_ref().unwrap().GetDescriptorHandleIncrementSize(d3d12::D3D12_DESCRIPTOR_HEAP_TYPE_RTV) as usize
+        }
     }
 
     back_buffers
@@ -414,6 +391,40 @@ pub fn create_index_buffer_resources(device: *mut d3d12::ID3D12Device, comitted_
     }
 }
 
+pub fn create_texture_buffer_from_file(path: &str) -> Image {
+
+    let img = image::open(get_relative_file_path(path)).unwrap();
+
+    let color_type = img.color();
+
+    let pixel_byte = match color_type {
+
+        image::ColorType::Rgb8 => mem::size_of::<image::Rgb<u8>>(),
+
+        _ => mem::size_of::<image::Rgb<u8>>()
+    };
+
+    let row_size = pixel_byte * (img.width() as usize);
+
+    let slice_size = row_size * (img.height() as usize);
+
+    let DXGI_FORMAT = match color_type {
+
+        image::ColorType::Rgb8 => dxgiformat::DXGI_FORMAT_R8G8B8A8_UINT,
+
+        _ => dxgiformat::DXGI_FORMAT_R8G8B8A8_UINT
+    };
+
+    Image {
+        width: img.width() as usize,
+        height: img.height() as usize,
+        DXGI_FORMAT: DXGI_FORMAT,
+        row_size: row_size,
+        slice_size: slice_size,
+        address: &img as *const _,
+    }
+}
+
 
 pub fn create_shader_resource(path: &str, pEntrypoint: &str, pTarget: &str, error_blob: *mut d3dcommon::ID3DBlob) -> Result<*mut d3dcommon::ID3DBlob, winerror::HRESULT> {
 
@@ -421,15 +432,15 @@ pub fn create_shader_resource(path: &str, pEntrypoint: &str, pTarget: &str, erro
 
     let result = unsafe {
         d3dcompiler::D3DCompileFromFile(
-        get_relative_file_path_to_wide_str(path).as_ptr() as *const u16,
-        std::ptr::null_mut(),
-        d3dcompiler::D3D_COMPILE_STANDARD_FILE_INCLUDE,
-        CString::new(pEntrypoint).unwrap().as_ptr(),
-        CString::new(pTarget).unwrap().as_ptr(),
-        d3dcompiler::D3DCOMPILE_DEBUG | d3dcompiler::D3DCOMPILE_SKIP_OPTIMIZATION,
-        0,
-        &mut shader_blob,
-        error_blob as *mut *mut d3dcommon::ID3D10Blob
+            path_to_wide_str(path).as_ptr() as *const u16,
+            std::ptr::null_mut(),
+            d3dcompiler::D3D_COMPILE_STANDARD_FILE_INCLUDE,
+            CString::new(pEntrypoint).unwrap().as_ptr(),
+            CString::new(pTarget).unwrap().as_ptr(),
+            d3dcompiler::D3DCOMPILE_DEBUG | d3dcompiler::D3DCOMPILE_SKIP_OPTIMIZATION,
+            0,
+            &mut shader_blob,
+            error_blob as *mut *mut d3dcommon::ID3D10Blob
         )
     };
 
@@ -469,16 +480,16 @@ pub fn create_root_signature(device: *mut d3d12::ID3D12Device, error_blob: *mut 
 
     let mut result = unsafe {
             d3d12::D3D12SerializeRootSignature(
-            &root_signature_desc,
-            d3d12::D3D_ROOT_SIGNATURE_VERSION_1_0,
-            &mut root_signature_blob,
-            error_blob as *mut *mut d3dcommon::ID3D10Blob
-        )
+                &root_signature_desc,
+                d3d12::D3D_ROOT_SIGNATURE_VERSION_1_0,
+                &mut root_signature_blob,
+                error_blob as *mut *mut d3dcommon::ID3D10Blob
+            )
     };
 
     result = unsafe {
         device.as_ref().unwrap().
-            CreateRootSignature(
+        CreateRootSignature(
             0,
             root_signature_blob.as_ref().unwrap().GetBufferPointer(),
             root_signature_blob.as_ref().unwrap().GetBufferSize(),
@@ -500,7 +511,7 @@ pub fn create_pipeline_state(device: *mut d3d12::ID3D12Device, gr_pipeline: d3d1
 
     let result = unsafe {
         device.as_ref().unwrap().
-            CreateGraphicsPipelineState(
+        CreateGraphicsPipelineState(
             &gr_pipeline,
             &d3d12::ID3D12PipelineState::uuidof(),
             get_pointer_of_self_object(&mut pipeline_state)
@@ -532,22 +543,6 @@ pub fn set_scissor_rect(width: i32, height: i32) -> d3d12::D3D12_RECT {
     scissor_rect
 }
 
-// pub fn create_random_texture() -> Vec<TexRGBA> {
-//     let mut data: Vec<TexRGBA> = Vec::with_capacity(256);
-
-//     let mut rng = rand::thread_rng();
-
-//     for v in data.iter_mut() {
-//         let n1: u8 = rng.gen();
-//         v.r = n1 % 255;
-//         v.g = n1 % 255;
-//         v.b = n1 % 255;
-//         v.r = 255;
-//     }
-
-//     data
-// }
-
 pub fn enable_debug_layer(is_debug: bool) {
 
     if !is_debug {
@@ -559,8 +554,8 @@ pub fn enable_debug_layer(is_debug: bool) {
     if winerror::SUCCEEDED(
         unsafe {
                 d3d12::D3D12GetDebugInterface(
-                &d3d12sdklayers::ID3D12Debug::uuidof(),
-                get_pointer_of_self_object(&mut debug_controller)
+                    &d3d12sdklayers::ID3D12Debug::uuidof(),
+                    get_pointer_of_self_object(&mut debug_controller)
                 )
             }
         )
@@ -582,10 +577,10 @@ pub fn report_live_objects(device: *mut d3d12::ID3D12Device, is_debug: bool) {
     if winerror::SUCCEEDED(
         unsafe {
                 device.as_ref().unwrap().
-                    QueryInterface(
-                &d3d12sdklayers::ID3D12DebugDevice::uuidof(),
-            get_pointer_of_self_object(&mut debug_interface)
-                    )
+                QueryInterface(
+                    &d3d12sdklayers::ID3D12DebugDevice::uuidof(),
+                    get_pointer_of_self_object(&mut debug_interface)
+                )
             }
         ) {
         unsafe {
@@ -599,15 +594,16 @@ pub fn utf16_to_vec(source: &str) -> Vec<u16> {
     source.encode_utf16().chain(Some(0)).collect()
 }
 
-// pub fn get_bytes_from_vec(vector: Vec) {
-//     (std::mem::size_of_val(&vertices) * 2)
-// }
-
-fn get_relative_file_path_to_wide_str(s: &str) -> Vec<u16> {
+fn get_relative_file_path(s: &str) -> path::PathBuf {
     let relative_path = path::Path::new(s);
     let pwd = env::current_dir().unwrap();
     let absolute_path = pwd.join(relative_path);
-    let wide_str = utf16_to_vec(absolute_path.to_str().unwrap());
+
+    absolute_path
+}
+
+fn path_to_wide_str(s: &str) -> Vec<u16> {
+    let wide_str = utf16_to_vec(get_relative_file_path(s).to_str().unwrap());
 
     wide_str
 }
@@ -623,4 +619,18 @@ fn get_pointer_of_self_object<T>(object: &mut T) -> *mut *mut ctypes::c_void {
     // void_ptr as *mut *mut T as *mut *mut ctypes::c_void
 
     void_ptr
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn some_test() {
+
+        let img = create_texture_buffer_from_file("assets\\images\\directx.png");
+
+        println!("{:?}", img);
+
+    }
 }

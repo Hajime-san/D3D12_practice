@@ -16,4 +16,4 @@ dxgi-sys = "0.2.0"
 dxguid-sys = "0.2.0"
 d3dcompiler-sys = "0.2.0"
 [dependencies]
-rand = "0.7"
+image = "0.23.11"
