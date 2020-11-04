@@ -2,9 +2,6 @@ use winapi::{
     um::{
         winuser,
         wingdi,
-        d3d12::*,
-        d3d12sdklayers::*,
-        d3dcommon::*,
         winbase::{ INFINITE },
         synchapi::{ CreateEventW, WaitForSingleObject },
         handleapi::{ CloseHandle },
@@ -13,22 +10,12 @@ use winapi::{
         windef,
         minwindef,
         winerror::{ SUCCEEDED },
-        dxgi::*,
-        dxgi1_2::*,
-        dxgi1_3::*,
-        dxgi1_5::*,
-        dxgi1_6::*,
-        dxgiformat::*,
-        dxgitype::*,
     },
     ctypes::c_void,
 };
 
 use std::ptr;
 use std::mem;
-use std::ffi::CString;
-
-use crate::lib;
 
 pub fn register_wndclass(class_name: &[u16]) -> bool {
 

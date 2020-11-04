@@ -20,6 +20,8 @@ use winapi::{
     ctypes,
 };
 
+use image::{ GenericImageView };
+
 use std::ptr;
 use std::mem;
 use std::ffi::CString;
@@ -81,7 +83,6 @@ fn main() {
 
     let cmd_queue = lib::create_command_queue(d3d12_device, &cmd_queue_desc).unwrap();
 
-
     // create swapchain
     let swapchain_desc1 = DXGI_SWAP_CHAIN_DESC1 {
         Width : WINDOW_WIDTH as u32,
@@ -128,66 +129,6 @@ fn main() {
     // create fence
     let fence = lib::create_fence(d3d12_device, 0, D3D12_FENCE_FLAG_NONE).unwrap();
 
-    // create texture buffer for uploade resource
-    let texture = lib::create_texture_buffer_from_file("assets\\images\\directx.png");
-
-    let texture_buffer_heap_prop = D3D12_HEAP_PROPERTIES {
-        Type : D3D12_HEAP_TYPE_UPLOAD,
-        CPUPageProperty : D3D12_CPU_PAGE_PROPERTY_UNKNOWN,
-        MemoryPoolPreference : D3D12_MEMORY_POOL_UNKNOWN,
-        CreationNodeMask: 0,
-        VisibleNodeMask: 0,
-    };
-
-    let mut texture_buffer_resource_desc = D3D12_RESOURCE_DESC {
-        Dimension : D3D12_RESOURCE_DIMENSION_BUFFER,
-        Alignment: 0,
-        Width : texture.slice_size,
-        Height : 1,
-        DepthOrArraySize : 1,
-        MipLevels : 1,
-        Format : DXGI_FORMAT_UNKNOWN,
-        SampleDesc: DXGI_SAMPLE_DESC {
-            Count : 1,
-            Quality: 0,
-        },
-        Flags : D3D12_RESOURCE_FLAG_NONE,
-        Layout : D3D12_TEXTURE_LAYOUT_ROW_MAJOR,
-    };
-
-    let mut upload_buffer = std::ptr::null_mut::<ID3D12Resource>();
-
-    result = unsafe {
-        d3d12_device.as_ref().unwrap().CreateCommittedResource(&texture_buffer_heap_prop, D3D12_HEAP_FLAG_NONE, &texture_buffer_resource_desc, D3D12_RESOURCE_STATE_GENERIC_READ, std::ptr::null_mut(), &IID_ID3D12Resource, upload_buffer as *mut *mut ID3D12Resource as *mut *mut ctypes::c_void)
-    };
-
-    // create buffer for coyp source to destination
-
-    let texture_buffer_destination_prop = D3D12_HEAP_PROPERTIES {
-        Type : D3D12_HEAP_TYPE_DEFAULT,
-        CPUPageProperty : D3D12_CPU_PAGE_PROPERTY_UNKNOWN,
-        MemoryPoolPreference : D3D12_MEMORY_POOL_UNKNOWN,
-        CreationNodeMask: 0,
-        VisibleNodeMask: 0,
-    };
-
-    texture_buffer_resource_desc.Format = texture.DXGI_FORMAT;
-    texture_buffer_resource_desc.Width = texture.width;
-    texture_buffer_resource_desc.Height = texture.height;
-    texture_buffer_resource_desc.DepthOrArraySize = 1;
-    texture_buffer_resource_desc.MipLevels = 1;
-    texture_buffer_resource_desc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
-    texture_buffer_resource_desc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
-
-    let mut copy_buffer = std::ptr::null_mut::<ID3D12Resource>();
-
-    result = unsafe {
-        d3d12_device.as_ref().unwrap().CreateCommittedResource(&texture_buffer_destination_prop, D3D12_HEAP_FLAG_NONE, &texture_buffer_resource_desc, D3D12_RESOURCE_STATE_COPY_DEST, std::ptr::null_mut(), &IID_ID3D12Resource, copy_buffer as *mut *mut ID3D12Resource as *mut *mut ctypes::c_void)
-    };
-
-    println!("{:?}", result);
-
-
     // create vertices
     let vertices  = vec![
         lib::Vertex {
@@ -220,7 +161,7 @@ fn main() {
     };
 
     // vertex buffer object
-    let mut vertex_buffer_resource_desc = D3D12_RESOURCE_DESC {
+    let vertex_buffer_resource_desc = D3D12_RESOURCE_DESC {
         Dimension : D3D12_RESOURCE_DIMENSION_BUFFER,
         Alignment: 0,
         Width : (std::mem::size_of_val(&vertices) * &vertices.len()) as u64,
@@ -283,6 +224,16 @@ fn main() {
         },
     ];
 
+    // cbv, srv, uav desctriptor heap
+    let texture_view_heap_desc = D3D12_DESCRIPTOR_HEAP_DESC {
+        Flags: D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE,
+        NodeMask: 0,
+        NumDescriptors: 1,
+        Type: D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV,
+    };
+
+    let mut texture_desc_heap = lib::create_descriptor_heap(d3d12_device, &texture_view_heap_desc).unwrap();
+
     // create root signature
     let root_signature = lib::create_root_signature(d3d12_device, shader_error_blob);
 
@@ -303,6 +254,16 @@ fn main() {
     gr_pipeline.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
     gr_pipeline.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;
     gr_pipeline.RasterizerState.DepthClipEnable = BOOL::TRUE as i32;
+    gr_pipeline.RasterizerState.FrontCounterClockwise = BOOL::FALSE as i32;
+	gr_pipeline.RasterizerState.DepthBias = D3D12_DEFAULT_DEPTH_BIAS as i32;
+	gr_pipeline.RasterizerState.DepthBiasClamp = D3D12_DEFAULT_DEPTH_BIAS_CLAMP;
+	gr_pipeline.RasterizerState.SlopeScaledDepthBias = D3D12_DEFAULT_SLOPE_SCALED_DEPTH_BIAS;
+	gr_pipeline.RasterizerState.AntialiasedLineEnable = BOOL::FALSE as i32;
+	gr_pipeline.RasterizerState.ForcedSampleCount = 0;
+    gr_pipeline.RasterizerState.ConservativeRaster = D3D12_CONSERVATIVE_RASTERIZATION_MODE_OFF;
+
+    gr_pipeline.DepthStencilState.DepthEnable = BOOL::FALSE as i32;
+	gr_pipeline.DepthStencilState.StencilEnable = BOOL::FALSE as i32;
 
     // blend mode
     gr_pipeline.BlendState.AlphaToCoverageEnable = BOOL::FALSE as i32;
@@ -343,7 +304,6 @@ fn main() {
     gr_pipeline.SampleDesc.Count = 1;
     gr_pipeline.SampleDesc.Quality = 0;
 
-
     // create grahphics pipeline state object
     let pipeline_state = lib::create_pipeline_state(d3d12_device, gr_pipeline);
 
@@ -352,6 +312,212 @@ fn main() {
 
     // scissor rectangle setting
     let scissor_rect = lib::set_scissor_rect(WINDOW_WIDTH, WINDOW_HEIGHT);
+
+    // create intermediate texture buffer for uploade resource
+    let texture = lib::create_texture_buffer_from_file("assets\\images\\directx.png");
+
+    let texture_buffer_heap_prop = D3D12_HEAP_PROPERTIES {
+        Type : D3D12_HEAP_TYPE_UPLOAD,
+        CPUPageProperty : D3D12_CPU_PAGE_PROPERTY_UNKNOWN,
+        MemoryPoolPreference : D3D12_MEMORY_POOL_UNKNOWN,
+        CreationNodeMask: 0,
+        VisibleNodeMask: 0,
+    };
+
+
+    let mut texture_buffer_resource_desc = D3D12_RESOURCE_DESC {
+        Dimension : D3D12_RESOURCE_DIMENSION_BUFFER,
+        Alignment: 0,
+        Width : texture.alignmented_slice_pitch,
+        Height : 1,
+        DepthOrArraySize : 1,
+        MipLevels : 1,
+        Format : DXGI_FORMAT_UNKNOWN,
+        SampleDesc: DXGI_SAMPLE_DESC {
+            Count : 1,
+            Quality: 0,
+        },
+        Flags : D3D12_RESOURCE_FLAG_NONE,
+        Layout : D3D12_TEXTURE_LAYOUT_ROW_MAJOR,
+    };
+
+    let mut intermediate_buffer = std::ptr::null_mut::<ID3D12Resource>();
+
+    result = unsafe {
+        d3d12_device.as_ref().unwrap().
+        CreateCommittedResource(
+                &texture_buffer_heap_prop,
+                D3D12_HEAP_FLAG_NONE,
+                &texture_buffer_resource_desc,
+                D3D12_RESOURCE_STATE_GENERIC_READ,
+                std::ptr::null_mut(),
+                &IID_ID3D12Resource,
+                &mut intermediate_buffer as *mut *mut ID3D12Resource as *mut *mut ctypes::c_void
+        )
+    };
+
+    // create buffer for copy source to destination
+    let texture_buffer_destination_prop = D3D12_HEAP_PROPERTIES {
+        Type : D3D12_HEAP_TYPE_DEFAULT,
+        CPUPageProperty : D3D12_CPU_PAGE_PROPERTY_UNKNOWN,
+        MemoryPoolPreference : D3D12_MEMORY_POOL_UNKNOWN,
+        CreationNodeMask: 0,
+        VisibleNodeMask: 0,
+    };
+
+    texture_buffer_resource_desc.Format = texture.format;
+    texture_buffer_resource_desc.Width = texture.width;
+    texture_buffer_resource_desc.Height = texture.height;
+    texture_buffer_resource_desc.DepthOrArraySize = 1;
+    texture_buffer_resource_desc.MipLevels = 1;
+    texture_buffer_resource_desc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+    texture_buffer_resource_desc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+
+    let mut texture_buffer = std::ptr::null_mut::<ID3D12Resource>();
+
+    result = unsafe {
+        d3d12_device.as_ref().unwrap().
+        CreateCommittedResource(
+            &texture_buffer_destination_prop,
+            D3D12_HEAP_FLAG_NONE,
+            &texture_buffer_resource_desc,
+            D3D12_RESOURCE_STATE_COPY_DEST,
+            std::ptr::null_mut(),
+            &IID_ID3D12Resource,
+            &mut texture_buffer as *mut *mut ID3D12Resource as *mut *mut ctypes::c_void
+        )
+    };
+
+    // buffer map
+    let mut buffer_map = std::ptr::null_mut::<Vec<u8>>();
+
+    // map buffer to GPU
+    result = unsafe {
+        intermediate_buffer.as_ref().unwrap().
+        Map(0, std::ptr::null_mut(), lib::get_pointer_of_self_object(&mut buffer_map))
+    };
+
+    unsafe {
+        buffer_map.copy_from_nonoverlapping(texture.raw_pointer, std::mem::size_of_val(&texture.alignmented_slice_pitch) )
+
+        // for _ in 0..texture.height {
+        //     buffer_map.copy_from_nonoverlapping(texture.raw_pointer, std::mem::size_of_val(&texture.alignmented_row_pitch) );
+
+        //     buffer_map = texture.raw_pointer.add(texture.alignmented_row_pitch as usize);
+
+        // }
+    };
+    unsafe {
+        intermediate_buffer.as_ref().unwrap().
+        Unmap(0, std::ptr::null_mut() )
+    };
+
+    // copy source description
+    let mut copy_src = D3D12_TEXTURE_COPY_LOCATION {
+        pResource: intermediate_buffer,
+        Type: D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT,
+        u: unsafe { mem::zeroed() },
+    };
+    * unsafe { copy_src.u.PlacedFootprint_mut() } = D3D12_PLACED_SUBRESOURCE_FOOTPRINT {
+            Offset: 0,
+            Footprint: D3D12_SUBRESOURCE_FOOTPRINT {
+                Format: texture.format,
+                Width: texture.width as u32,
+                Height: 1,
+                Depth: 1,
+                RowPitch: texture.alignmented_row_pitch,
+            }
+    };
+
+    // copy destination
+    let mut copy_dest = D3D12_TEXTURE_COPY_LOCATION {
+        pResource: texture_buffer,
+        Type: D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX,
+        u: unsafe { mem::zeroed() },
+    };
+    * unsafe { copy_dest.u.SubresourceIndex_mut() } = 0;
+
+    {
+
+        // handle fence
+        let mut current_frame = 0;
+
+
+        unsafe {
+            cmd_list.as_ref().unwrap().CopyTextureRegion(&copy_dest, 0, 0, 0, &copy_src, std::ptr::null_mut())
+        };
+
+
+        let mut texture_barrier_desc = D3D12_RESOURCE_BARRIER {
+            Type : D3D12_RESOURCE_BARRIER_TYPE_TRANSITION,
+            Flags : D3D12_RESOURCE_BARRIER_FLAG_NONE,
+            u: unsafe { mem::zeroed() },
+        };
+        * unsafe { texture_barrier_desc.u.Transition_mut() } = D3D12_RESOURCE_TRANSITION_BARRIER {
+            pResource : texture_buffer,
+            Subresource: D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
+            StateBefore: D3D12_RESOURCE_STATE_COPY_DEST,
+            StateAfter: D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+        };
+
+        unsafe {
+            cmd_list.as_ref().unwrap().ResourceBarrier(1, &texture_barrier_desc);
+        };
+        unsafe {
+            cmd_list.as_ref().unwrap().Close();
+        };
+
+
+        let cmd_list_arrays = [ cmd_list.cast::<ID3D12CommandList>() ];
+
+        unsafe {
+            cmd_queue.as_ref().unwrap().ExecuteCommandLists(1, &cmd_list_arrays[0]);
+        };
+
+        unsafe {
+            cmd_queue.as_ref().unwrap().Signal(fence, current_frame);
+        };
+
+        if unsafe { fence.as_ref().unwrap().GetCompletedValue() } != current_frame {
+
+            let event = unsafe { CreateEventW(ptr::null_mut(), 0, 0, ptr::null_mut()) };
+
+            unsafe {
+                fence.as_ref().unwrap().SetEventOnCompletion(current_frame, event);
+            };
+
+            unsafe {
+                WaitForSingleObject(event, INFINITE);
+            };
+
+            unsafe {
+                CloseHandle(event);
+            };
+        }
+
+        unsafe { cmd_allocator.as_ref().unwrap().Reset(); };
+
+        unsafe { cmd_list.as_ref().unwrap().Reset(cmd_allocator, ptr::null_mut()); };
+
+    };
+
+	// shader resource view
+    let mut shader_resource_view_desc = D3D12_SHADER_RESOURCE_VIEW_DESC {
+        Format: texture.format,
+        Shader4ComponentMapping: D3D12_SHADER_COMPONENT_MAPPING_ALWAYS_SET_BIT_AVOIDING_ZEROMEM_MISTAKES,
+        ViewDimension: D3D12_SRV_DIMENSION_TEXTURE2D,
+        u: unsafe { mem::zeroed() },
+    };
+    unsafe { shader_resource_view_desc.u.Texture2D_mut().MipLevels = 1 };
+
+    unsafe {
+        d3d12_device.as_ref().unwrap().
+        CreateShaderResourceView(
+            texture_buffer,
+            &shader_resource_view_desc,
+            texture_desc_heap.as_ref().unwrap().GetCPUDescriptorHandleForHeapStart()
+        )
+    };
 
     win::show_window(hwnd);
 
@@ -385,8 +551,7 @@ fn main() {
             Flags : D3D12_RESOURCE_BARRIER_FLAG_NONE,
             u: unsafe { mem::zeroed() },
         };
-        * unsafe { barrier_desc.u.Transition_mut() } =
-            D3D12_RESOURCE_TRANSITION_BARRIER {
+        * unsafe { barrier_desc.u.Transition_mut() } = D3D12_RESOURCE_TRANSITION_BARRIER {
             pResource : back_buffers[back_buffers_index as usize],
             Subresource: D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
             StateBefore: D3D12_RESOURCE_STATE_PRESENT,
@@ -423,6 +588,9 @@ fn main() {
         unsafe { cmd_list.as_ref().unwrap().IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST); };
         unsafe { cmd_list.as_ref().unwrap().IASetVertexBuffers(0, 1, &vertex_buffer.buffer_view); };
         unsafe { cmd_list.as_ref().unwrap().IASetIndexBuffer(&index_buffer.buffer_view); };
+        unsafe { cmd_list.as_ref().unwrap().SetDescriptorHeaps(1, &mut texture_desc_heap); };
+		unsafe { cmd_list.as_ref().unwrap().SetGraphicsRootDescriptorTable(0, texture_desc_heap.as_ref().unwrap().GetGPUDescriptorHandleForHeapStart()) };
+
         unsafe { cmd_list.as_ref().unwrap().DrawIndexedInstanced(indices.len() as u32, 1, 0, 0, 0); };
 
         // swap barrier state

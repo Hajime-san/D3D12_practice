@@ -37,7 +37,7 @@ use std::str;
 use std::path;
 use std::ffi::CString;
 use std::env;
-use image::{ GenericImageView };
+use image::{ GenericImageView, DynamicImage };
 
 #[derive(Debug, Clone, Copy)]
 pub struct XMFLOAT3 {
@@ -55,15 +55,29 @@ pub struct Vertex {
     pub position: XMFLOAT3,
     pub uv: XMFLOAT2,
 }
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct Image {
     pub width: u64,
     pub height: u32,
-    pub DXGI_FORMAT: dxgiformat::DXGI_FORMAT,
-    pub row_size: usize,
-    pub slice_size: u64,
-    pub address: *const image::DynamicImage,
-    // buffer_object: *const d3d12::ID3D12Resource,
+    pub format: dxgiformat::DXGI_FORMAT,
+    pub row_pitch: usize,
+    pub slice_pitch: usize,
+    pub alignmented_row_pitch: u32,
+    pub alignmented_slice_pitch: u64,
+    pub raw_pointer: *mut Vec<u8>,
+}
+
+#[derive(Debug, Clone)]
+pub struct TexMetadata {
+    pub width: u64,
+    pub height: u64,
+    pub depth: u64,
+    pub array_size: u64,
+    pub mip_levels: u64,
+    pub misc_flags: u64,
+    pub misc_flags2: u64,
+    pub format: u64,
+    pub dimension: u64,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -277,13 +291,21 @@ pub fn create_back_buffer(device: *mut d3d12::ID3D12Device, swapchain: *mut dxgi
 
     let mut handle = unsafe { descriotor_heap.as_ref().unwrap().GetCPUDescriptorHandleForHeapStart() };
 
+    // SRGB render target view
+	let rtv_desc = d3d12::D3D12_RENDER_TARGET_VIEW_DESC {
+        Format: dxgiformat::DXGI_FORMAT_R8G8B8A8_UNORM_SRGB,
+        ViewDimension: d3d12::D3D12_RTV_DIMENSION_TEXTURE2D,
+        u: unsafe { mem::zeroed() },
+    };
+
     for i in 0..swapchain_desc.BufferCount {
         unsafe {
             swapchain.as_ref().unwrap().GetBuffer(i as u32, &d3d12::ID3D12Resource::uuidof(), get_pointer_of_self_object(&mut back_buffers[i as usize]));
         }
 
         unsafe {
-            device.as_ref().unwrap().CreateRenderTargetView(back_buffers[i as usize], std::ptr::null_mut(), handle)
+            device.as_ref().unwrap().CreateRenderTargetView(back_buffers[i as usize], &rtv_desc, handle)
+            // device.as_ref().unwrap().CreateRenderTargetView(back_buffers[i as usize], std::ptr::null_mut(), handle)
         }
 
         handle.ptr += unsafe {
@@ -394,35 +416,41 @@ pub fn create_index_buffer_resources(device: *mut d3d12::ID3D12Device, comitted_
 
 pub fn create_texture_buffer_from_file(path: &str) -> Image {
 
-    let img = image::open(get_relative_file_path(path)).unwrap();
+    let mut img = image::open(get_relative_file_path(path)).unwrap();
 
     let color_type = img.color();
 
-    let pixel_byte = match color_type {
+    let bits_per_pixel = match color_type {
 
-        image::ColorType::Rgb8 => mem::size_of::<image::Rgb<u8>>(),
+        image::ColorType::Rgb8 => mem::size_of::<image::Rgba<u8>>(),
 
         _ => mem::size_of::<image::Rgb<u8>>()
     };
 
-    let row_size = pixel_byte * (img.width() as usize);
+    let row_pitch = bits_per_pixel * (img.width() as usize);
 
-    let slice_size = row_size * (img.height() as usize);
+    let slice_pitch = row_pitch * (img.height() as usize);
 
-    let DXGI_FORMAT = match color_type {
+    let format = match color_type {
 
-        image::ColorType::Rgb8 => dxgiformat::DXGI_FORMAT_R8G8B8A8_UINT,
+        image::ColorType::Rgb8 => dxgiformat::DXGI_FORMAT_R8G8B8A8_UNORM,
 
-        _ => dxgiformat::DXGI_FORMAT_R8G8B8A8_UINT
+        _ => dxgiformat::DXGI_FORMAT_R8G8B8A8_UNORM
     };
+
+    let alignmented_row_pitch = (row_pitch as u32 + d3d12::D3D12_TEXTURE_DATA_PITCH_ALIGNMENT) - (row_pitch as u32 % d3d12::D3D12_TEXTURE_DATA_PITCH_ALIGNMENT);
+
+    let alignmented_slice_pitch = alignmented_row_pitch * img.height();
 
     Image {
         width: img.width() as u64,
         height: img.height() as u32,
-        DXGI_FORMAT: DXGI_FORMAT,
-        row_size: row_size,
-        slice_size: slice_size as u64,
-        address: &img as *const _,
+        format: format,
+        row_pitch: row_pitch,
+        slice_pitch: slice_pitch,
+        alignmented_row_pitch: alignmented_row_pitch,
+        alignmented_slice_pitch: alignmented_slice_pitch as u64,
+        raw_pointer: &mut img.to_bytes() as *mut _,
     }
 }
 
@@ -475,6 +503,49 @@ pub fn create_root_signature(device: *mut d3d12::ID3D12Device, error_blob: *mut 
 
     let mut root_signature_desc: d3d12::D3D12_ROOT_SIGNATURE_DESC = unsafe { mem::zeroed() };
     root_signature_desc.Flags = d3d12::D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
+
+    // texture settings
+    let descriptor_range = d3d12::D3D12_DESCRIPTOR_RANGE {
+        NumDescriptors: 1,
+        RangeType: d3d12::D3D12_DESCRIPTOR_RANGE_TYPE_SRV,
+        BaseShaderRegister: 0,
+        RegisterSpace: 0,
+        OffsetInDescriptorsFromTableStart: d3d12::D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND,
+    };
+
+    let mut root_param = d3d12::D3D12_ROOT_PARAMETER {
+        ParameterType: d3d12::D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE,
+        ShaderVisibility: d3d12::D3D12_SHADER_VISIBILITY_PIXEL,
+        u: unsafe { mem::zeroed() },
+    };
+    * unsafe { root_param.u.DescriptorTable_mut() } = d3d12::D3D12_ROOT_DESCRIPTOR_TABLE {
+        NumDescriptorRanges: 1,
+        pDescriptorRanges: &descriptor_range,
+    };
+
+    let sampler_desc = d3d12::D3D12_STATIC_SAMPLER_DESC {
+        AddressU: d3d12::D3D12_TEXTURE_ADDRESS_MODE_WRAP,
+        AddressV: d3d12::D3D12_TEXTURE_ADDRESS_MODE_WRAP,
+        AddressW: d3d12::D3D12_TEXTURE_ADDRESS_MODE_WRAP,
+        BorderColor: d3d12::D3D12_STATIC_BORDER_COLOR_TRANSPARENT_BLACK,
+        Filter: d3d12::D3D12_FILTER_MIN_MAG_MIP_POINT,
+        MaxLOD: d3d12::D3D12_FLOAT32_MAX,
+        MinLOD: 0.0,
+        ComparisonFunc: d3d12::D3D12_COMPARISON_FUNC_NEVER,
+        ShaderVisibility: d3d12::D3D12_SHADER_VISIBILITY_PIXEL,
+        MipLODBias: 0.0,
+        MaxAnisotropy: 0,
+        ShaderRegister: 0,
+        RegisterSpace: 0
+    };
+
+    root_signature_desc.pParameters = &root_param;
+    root_signature_desc.NumParameters = 1;
+
+    root_signature_desc.pStaticSamplers = &sampler_desc;
+    root_signature_desc.NumStaticSamplers = 1;
+    // texture settings
+
 
     // create root signature binary
     let mut root_signature_blob = std::ptr::null_mut::<d3dcommon::ID3DBlob>();
@@ -609,7 +680,7 @@ fn path_to_wide_str(s: &str) -> Vec<u16> {
     wide_str
 }
 
-fn get_pointer_of_self_object<T>(object: &mut T) -> *mut *mut ctypes::c_void {
+pub fn get_pointer_of_self_object<T>(object: &mut T) -> *mut *mut ctypes::c_void {
     // we need to convert the reference to a pointer
     let raw_ptr = object as *mut T;
 
