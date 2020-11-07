@@ -491,7 +491,7 @@ pub fn create_shader_resource(path: &str, pEntrypoint: &str, pTarget: &str, erro
 
             println!("{:?}", error_str);
 
-            panic!();
+            Err(-1)
 
         }
     }

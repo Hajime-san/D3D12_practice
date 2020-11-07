@@ -32,6 +32,7 @@ pub mod win;
 const WINDOW_WIDTH: i32 = 1280;
 const WINDOW_HEIGHT: i32 = 720;
 const DEBUG: bool = true;
+const D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING: u32 = 0x1688;
 
 enum BOOL {
     FALSE = 0,
@@ -224,16 +225,6 @@ fn main() {
         },
     ];
 
-    // cbv, srv, uav desctriptor heap
-    let texture_view_heap_desc = D3D12_DESCRIPTOR_HEAP_DESC {
-        Flags: D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE,
-        NodeMask: 0,
-        NumDescriptors: 1,
-        Type: D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV,
-    };
-
-    let mut texture_desc_heap = lib::create_descriptor_heap(d3d12_device, &texture_view_heap_desc).unwrap();
-
     // create root signature
     let root_signature = lib::create_root_signature(d3d12_device, shader_error_blob);
 
@@ -289,7 +280,7 @@ fn main() {
 
     // render target settings
     gr_pipeline.NumRenderTargets = 1;
-    gr_pipeline.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+    gr_pipeline.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
 
     gr_pipeline.RTVFormats[1] = DXGI_FORMAT_UNKNOWN;
     gr_pipeline.RTVFormats[2] = DXGI_FORMAT_UNKNOWN;
@@ -501,10 +492,20 @@ fn main() {
 
     };
 
+    // cbv, srv, uav desctriptor heap
+    let texture_view_heap_desc = D3D12_DESCRIPTOR_HEAP_DESC {
+        Flags: D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE,
+        NodeMask: 0,
+        NumDescriptors: 1,
+        Type: D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV,
+    };
+
+    let mut texture_desc_heap = lib::create_descriptor_heap(d3d12_device, &texture_view_heap_desc).unwrap();
+
 	// shader resource view
     let mut shader_resource_view_desc = D3D12_SHADER_RESOURCE_VIEW_DESC {
         Format: texture.format,
-        Shader4ComponentMapping: D3D12_SHADER_COMPONENT_MAPPING_ALWAYS_SET_BIT_AVOIDING_ZEROMEM_MISTAKES,
+        Shader4ComponentMapping: D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING,
         ViewDimension: D3D12_SRV_DIMENSION_TEXTURE2D,
         u: unsafe { mem::zeroed() },
     };
@@ -523,7 +524,7 @@ fn main() {
 
 
     let mut current_frame = 0;
-    let clear_color: [FLOAT; 4] = [ 1.0, 1.0, 0.0, 1.0 ];
+    let clear_color: [FLOAT; 4] = [ 0.0, 0.0, 1.0, 1.0 ];
 
     let mut msg = unsafe { mem::MaybeUninit::uninit().assume_init() };
     loop {
