@@ -1,4 +1,4 @@
-#include "BasicShaderHeader.hlsli"
+#include "ShaderHeader.hlsli"
 
 Output BasicVS(float4 position : POSITION, float2 uv: TEXCOORD) {
 	Output output;

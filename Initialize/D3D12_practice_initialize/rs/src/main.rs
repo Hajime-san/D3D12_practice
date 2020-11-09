@@ -124,11 +124,15 @@ fn main() {
 
     let rtv_heaps = lib::create_descriptor_heap(d3d12_device, &heap_desc).unwrap();
 
-    // bind render target view heap to swap chain buffer
-    let back_buffers = lib::create_back_buffer(d3d12_device, swapchain, swapchain_desc1, rtv_heaps, std::ptr::null_mut());
+    // SRGB render target view
+	let rtv_desc = D3D12_RENDER_TARGET_VIEW_DESC {
+        Format: DXGI_FORMAT_R8G8B8A8_UNORM_SRGB,
+        ViewDimension: D3D12_RTV_DIMENSION_TEXTURE2D,
+        u: unsafe { mem::zeroed() },
+    };
 
-    // create fence
-    let fence = lib::create_fence(d3d12_device, 0, D3D12_FENCE_FLAG_NONE).unwrap();
+    // bind render target view heap to swap chain buffer
+    let back_buffers = lib::create_back_buffer(d3d12_device, swapchain, swapchain_desc1, rtv_heaps, &rtv_desc);
 
     // create vertices
     let vertices  = vec![
@@ -157,8 +161,8 @@ fn main() {
         Type : D3D12_HEAP_TYPE_UPLOAD,
         CPUPageProperty : D3D12_CPU_PAGE_PROPERTY_UNKNOWN,
         MemoryPoolPreference : D3D12_MEMORY_POOL_UNKNOWN,
-        CreationNodeMask: 1,
-        VisibleNodeMask: 1,
+        CreationNodeMask: 0,
+        VisibleNodeMask: 0,
     };
 
     // vertex buffer object
@@ -193,7 +197,6 @@ fn main() {
     ];
 
     // create vertex resources
-
     let vertex_buffer = lib::create_vertex_buffer_resources(d3d12_device, comitted_resource, vertices.clone());
 
     let index_buffer = lib::create_index_buffer_resources(d3d12_device, comitted_resource, indices.clone());
@@ -269,7 +272,7 @@ fn main() {
     gr_pipeline.BlendState.RenderTarget[0] = render_target_blend_desc;
 
     // bind input layout
-    gr_pipeline.InputLayout.pInputElementDescs = &input_element[0];
+    gr_pipeline.InputLayout.pInputElementDescs = &input_element as *const _;
     gr_pipeline.InputLayout.NumElements = input_element.len() as u32;
 
     // way to express triangle
@@ -281,14 +284,6 @@ fn main() {
     // render target settings
     gr_pipeline.NumRenderTargets = 1;
     gr_pipeline.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
-
-    gr_pipeline.RTVFormats[1] = DXGI_FORMAT_UNKNOWN;
-    gr_pipeline.RTVFormats[2] = DXGI_FORMAT_UNKNOWN;
-    gr_pipeline.RTVFormats[3] = DXGI_FORMAT_UNKNOWN;
-    gr_pipeline.RTVFormats[4] = DXGI_FORMAT_UNKNOWN;
-    gr_pipeline.RTVFormats[5] = DXGI_FORMAT_UNKNOWN;
-    gr_pipeline.RTVFormats[6] = DXGI_FORMAT_UNKNOWN;
-    gr_pipeline.RTVFormats[7] = DXGI_FORMAT_UNKNOWN;
 
     // anti aliasing
     gr_pipeline.RasterizerState.MultisampleEnable = BOOL::FALSE as i32;
@@ -305,7 +300,7 @@ fn main() {
     let scissor_rect = lib::set_scissor_rect(WINDOW_WIDTH, WINDOW_HEIGHT);
 
     // create intermediate texture buffer for uploade resource
-    let texture = lib::create_texture_buffer_from_file("assets\\images\\directx.png");
+    let texture = lib::create_texture_buffer_from_file("assets\\images\\test.png");
 
     let texture_buffer_heap_prop = D3D12_HEAP_PROPERTIES {
         Type : D3D12_HEAP_TYPE_UPLOAD,
@@ -357,7 +352,7 @@ fn main() {
     };
 
     texture_buffer_resource_desc.Format = texture.format;
-    texture_buffer_resource_desc.Width = texture.width;
+    texture_buffer_resource_desc.Width = texture.width as u64;
     texture_buffer_resource_desc.Height = texture.height;
     texture_buffer_resource_desc.DepthOrArraySize = 1;
     texture_buffer_resource_desc.MipLevels = 1;
@@ -388,16 +383,11 @@ fn main() {
         Map(0, std::ptr::null_mut(), lib::get_pointer_of_self_object(&mut buffer_map))
     };
 
+
     unsafe {
-        buffer_map.copy_from_nonoverlapping(texture.raw_pointer, std::mem::size_of_val(&texture.alignmented_slice_pitch) )
-
-        // for _ in 0..texture.height {
-        //     buffer_map.copy_from_nonoverlapping(texture.raw_pointer, std::mem::size_of_val(&texture.alignmented_row_pitch) );
-
-        //     buffer_map = texture.raw_pointer.add(texture.alignmented_row_pitch as usize);
-
-        // }
+        buffer_map.copy_from_nonoverlapping(texture.raw_pointer.as_ptr().cast::<Vec<u8>>(), texture.alignmented_row_pitch as usize * 10);
     };
+
     unsafe {
         intermediate_buffer.as_ref().unwrap().
         Unmap(0, std::ptr::null_mut() )
@@ -414,7 +404,7 @@ fn main() {
             Footprint: D3D12_SUBRESOURCE_FOOTPRINT {
                 Format: texture.format,
                 Width: texture.width as u32,
-                Height: 1,
+                Height: texture.height,
                 Depth: 1,
                 RowPitch: texture.alignmented_row_pitch,
             }
@@ -428,11 +418,15 @@ fn main() {
     };
     * unsafe { copy_dest.u.SubresourceIndex_mut() } = 0;
 
+    // handle fence
+    let mut current_frame: u64 = 0;
+
+    // create fence
+    let fence = lib::create_fence(d3d12_device, current_frame as i32, D3D12_FENCE_FLAG_NONE).unwrap();
+
     {
 
-        // handle fence
-        let mut current_frame = 0;
-
+        current_frame += 1;
 
         unsafe {
             cmd_list.as_ref().unwrap().CopyTextureRegion(&copy_dest, 0, 0, 0, &copy_src, std::ptr::null_mut())
@@ -520,13 +514,13 @@ fn main() {
         )
     };
 
-    win::show_window(hwnd);
 
-
-    let mut current_frame = 0;
     let clear_color: [FLOAT; 4] = [ 0.0, 0.0, 1.0, 1.0 ];
 
     let mut msg = unsafe { mem::MaybeUninit::uninit().assume_init() };
+
+    win::show_window(hwnd);
+
     loop {
         // quit loop
         if win::quit_window(&mut msg) {
@@ -621,7 +615,7 @@ fn main() {
 
         unsafe { cmd_allocator.as_ref().unwrap().Reset(); };
 
-        unsafe { cmd_list.as_ref().unwrap().Reset(cmd_allocator, ptr::null_mut()); };
+        unsafe { cmd_list.as_ref().unwrap().Reset(cmd_allocator, pipeline_state); };
 
 
         // swap buffer

@@ -64,7 +64,7 @@ pub struct Image {
     pub slice_pitch: usize,
     pub alignmented_row_pitch: u32,
     pub alignmented_slice_pitch: u64,
-    pub raw_pointer: *mut Vec<u8>,
+    pub raw_pointer: Vec<u8>,
 }
 
 #[derive(Debug, Clone)]
@@ -291,12 +291,6 @@ pub fn create_back_buffer(device: *mut d3d12::ID3D12Device, swapchain: *mut dxgi
 
     let mut handle = unsafe { descriotor_heap.as_ref().unwrap().GetCPUDescriptorHandleForHeapStart() };
 
-    // SRGB render target view
-	let rtv_desc = d3d12::D3D12_RENDER_TARGET_VIEW_DESC {
-        Format: dxgiformat::DXGI_FORMAT_R8G8B8A8_UNORM_SRGB,
-        ViewDimension: d3d12::D3D12_RTV_DIMENSION_TEXTURE2D,
-        u: unsafe { mem::zeroed() },
-    };
 
     for i in 0..swapchain_desc.BufferCount {
         unsafe {
@@ -304,8 +298,7 @@ pub fn create_back_buffer(device: *mut d3d12::ID3D12Device, swapchain: *mut dxgi
         }
 
         unsafe {
-            device.as_ref().unwrap().CreateRenderTargetView(back_buffers[i as usize], &rtv_desc, handle)
-            // device.as_ref().unwrap().CreateRenderTargetView(back_buffers[i as usize], std::ptr::null_mut(), handle)
+            device.as_ref().unwrap().CreateRenderTargetView(back_buffers[i as usize], pDesc, handle)
         }
 
         handle.ptr += unsafe {
@@ -450,7 +443,7 @@ pub fn create_texture_buffer_from_file(path: &str) -> Image {
         slice_pitch: slice_pitch,
         alignmented_row_pitch: alignmented_row_pitch,
         alignmented_slice_pitch: alignmented_slice_pitch as u64,
-        raw_pointer: &mut img.to_bytes() as *mut _,
+        raw_pointer: img.to_bytes(),
     }
 }
 
