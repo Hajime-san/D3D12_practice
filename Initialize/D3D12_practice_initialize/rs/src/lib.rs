@@ -100,7 +100,7 @@ pub fn create_dxgi_factory1<T: Interface>() -> Result<*mut T, winerror::HRESULT>
 
     let mut obj = ptr::null_mut::<T>();
     let result = unsafe {
-        dxgi::CreateDXGIFactory1(&T::uuidof(), get_pointer_of_self_object(&mut obj))
+        dxgi::CreateDXGIFactory1(&T::uuidof(), get_pointer_of_interface(&mut obj))
     };
 
     match result {
@@ -112,7 +112,7 @@ pub fn create_dxgi_factory1<T: Interface>() -> Result<*mut T, winerror::HRESULT>
 pub fn create_dxgi_factory2<T: Interface>(Flags: minwindef::UINT) -> Result<*mut T, winerror::HRESULT> {
     let mut obj = ptr::null_mut::<T>();
     let result = unsafe {
-        dxgi1_3::CreateDXGIFactory2(Flags, &T::uuidof(), get_pointer_of_self_object(&mut obj))
+        dxgi1_3::CreateDXGIFactory2(Flags, &T::uuidof(), get_pointer_of_interface(&mut obj))
     };
 
     match result {
@@ -138,7 +138,7 @@ pub fn create_d3d12_device() -> Result<*mut d3d12::ID3D12Device, winerror::HRESU
                 d3d12::D3D12CreateDevice(
                     ptr::null_mut(),
                     *lv, &d3d12::ID3D12Device::uuidof(),
-                    get_pointer_of_self_object(&mut obj)
+                    get_pointer_of_interface(&mut obj)
                 )
                 == winerror::S_OK
             }
@@ -194,7 +194,7 @@ pub fn create_command_allocator(device: *mut d3d12::ID3D12Device, type_: d3d12::
 
     let result = unsafe {
         device.as_ref().unwrap().
-        CreateCommandAllocator(type_, &d3d12::ID3D12CommandAllocator::uuidof(), get_pointer_of_self_object(&mut obj))
+        CreateCommandAllocator(type_, &d3d12::ID3D12CommandAllocator::uuidof(), get_pointer_of_interface(&mut obj))
     };
 
     match result {
@@ -215,7 +215,7 @@ pub fn create_command_list(device: *mut d3d12::ID3D12Device, nodeMask: u32, type
             pCommandAllocator,
             pInitialState,
             &d3d12::ID3D12GraphicsCommandList::uuidof(),
-            get_pointer_of_self_object(&mut obj)
+            get_pointer_of_interface(&mut obj)
         )
     };
 
@@ -234,7 +234,7 @@ pub fn create_command_queue(device: *mut d3d12::ID3D12Device, pDesc: *const d3d1
         CreateCommandQueue(
             pDesc,
             &d3d12::ID3D12CommandQueue::uuidof(),
-            get_pointer_of_self_object(&mut obj)
+            get_pointer_of_interface(&mut obj)
         )
     };
 
@@ -274,7 +274,7 @@ pub fn create_descriptor_heap(device: *mut d3d12::ID3D12Device, pDescriptorHeapD
         CreateDescriptorHeap(
             pDescriptorHeapDesc,
             &d3d12::ID3D12DescriptorHeap::uuidof(),
-            get_pointer_of_self_object(&mut obj)
+            get_pointer_of_interface(&mut obj)
         )
     };
 
@@ -294,7 +294,7 @@ pub fn create_back_buffer(device: *mut d3d12::ID3D12Device, swapchain: *mut dxgi
 
     for i in 0..swapchain_desc.BufferCount {
         unsafe {
-            swapchain.as_ref().unwrap().GetBuffer(i as u32, &d3d12::ID3D12Resource::uuidof(), get_pointer_of_self_object(&mut back_buffers[i as usize]));
+            swapchain.as_ref().unwrap().GetBuffer(i as u32, &d3d12::ID3D12Resource::uuidof(), get_pointer_of_interface(&mut back_buffers[i as usize]));
         }
 
         unsafe {
@@ -319,7 +319,7 @@ pub fn create_fence(device: *mut d3d12::ID3D12Device, InitialValue: i32, Flags: 
             InitialValue as u64,
             Flags,
             &d3d12::ID3D12Fence::uuidof(),
-            get_pointer_of_self_object(&mut obj)
+            get_pointer_of_interface(&mut obj)
         )
     };
 
@@ -342,7 +342,7 @@ fn create_buffer_map<T>(device: *mut d3d12::ID3D12Device, comitted_resource: Com
                     comitted_resource.InitialResourceState,
                     comitted_resource.pOptimizedClearValue,
                     &d3d12::ID3D12Resource::uuidof(),
-                    get_pointer_of_self_object(&mut buffer)
+                    get_pointer_of_interface(&mut buffer)
             )
     };
 
@@ -352,7 +352,7 @@ fn create_buffer_map<T>(device: *mut d3d12::ID3D12Device, comitted_resource: Com
     // map buffer to GPU
     result = unsafe {
         buffer.as_ref().unwrap().
-        Map(0, std::ptr::null_mut(), get_pointer_of_self_object(&mut buffer_map))
+        Map(0, std::ptr::null_mut(), get_pointer_of_interface(&mut buffer_map))
     };
     unsafe {
         buffer_map.copy_from_nonoverlapping(resource.as_ptr().cast::<Vec<T>>(), std::mem::size_of_val(&resource) )
@@ -568,7 +568,7 @@ pub fn create_root_signature(device: *mut d3d12::ID3D12Device, error_blob: *mut 
             root_signature_blob.as_ref().unwrap().GetBufferPointer(),
             root_signature_blob.as_ref().unwrap().GetBufferSize(),
             &d3d12::ID3D12RootSignature::uuidof(),
-            get_pointer_of_self_object(&mut root_signature)
+            get_pointer_of_interface(&mut root_signature)
         )
     };
 
@@ -588,7 +588,7 @@ pub fn create_pipeline_state(device: *mut d3d12::ID3D12Device, gr_pipeline: d3d1
         CreateGraphicsPipelineState(
             &gr_pipeline,
             &d3d12::ID3D12PipelineState::uuidof(),
-            get_pointer_of_self_object(&mut pipeline_state)
+            get_pointer_of_interface(&mut pipeline_state)
         )
     };
 
@@ -629,7 +629,7 @@ pub fn enable_debug_layer(is_debug: bool) {
         unsafe {
                 d3d12::D3D12GetDebugInterface(
                     &d3d12sdklayers::ID3D12Debug::uuidof(),
-                    get_pointer_of_self_object(&mut debug_controller)
+                    get_pointer_of_interface(&mut debug_controller)
                 )
             }
         )
@@ -653,7 +653,7 @@ pub fn report_live_objects(device: *mut d3d12::ID3D12Device, is_debug: bool) {
                 device.as_ref().unwrap().
                 QueryInterface(
                     &d3d12sdklayers::ID3D12DebugDevice::uuidof(),
-                    get_pointer_of_self_object(&mut debug_interface)
+                    get_pointer_of_interface(&mut debug_interface)
                 )
             }
         ) {
@@ -682,7 +682,7 @@ fn path_to_wide_str(s: &str) -> Vec<u16> {
     wide_str
 }
 
-pub fn get_pointer_of_self_object<T>(object: &mut T) -> *mut *mut ctypes::c_void {
+pub fn get_pointer_of_interface<T>(object: &mut T) -> *mut *mut ctypes::c_void {
     // we need to convert the reference to a pointer
     let raw_ptr = object as *mut T;
 

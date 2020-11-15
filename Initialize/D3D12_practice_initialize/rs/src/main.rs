@@ -375,20 +375,20 @@ fn main() {
     };
 
     // buffer map
-    let mut buffer_map = std::ptr::null_mut::<Vec<u8>>();
+    let mut buffer_map = std::ptr::null_mut::<u8>();
 
     // map buffer to GPU
     result = unsafe {
         intermediate_buffer.as_ref().unwrap().
-        Map(0, std::ptr::null_mut(), lib::get_pointer_of_self_object(&mut buffer_map))
+        Map(0, std::ptr::null_mut(), lib::get_pointer_of_interface(&mut buffer_map))
     };
 
     unsafe {
-        let mut tmp_pointer = texture.raw_pointer.as_mut_ptr().cast::<Vec<u8>>();
+        let mut tmp_pointer = texture.raw_pointer.as_mut_ptr().cast::<u8>();
 
-        for (_, _) in (0..10).into_iter().enumerate() {
+        for _ in 0..texture.height {
 
-            buffer_map.copy_from(tmp_pointer, texture.alignmented_row_pitch as usize);
+            buffer_map.copy_from_nonoverlapping(tmp_pointer, texture.alignmented_row_pitch as usize);
 
             tmp_pointer = tmp_pointer.offset(texture.row_pitch as isize);
 
