@@ -373,7 +373,7 @@ pub fn create_vertex_buffer_resources(device: *mut d3d12::ID3D12Device, comitted
 
     let buffer_view = d3d12::D3D12_VERTEX_BUFFER_VIEW {
         BufferLocation : unsafe { buffer.as_ref().unwrap().GetGPUVirtualAddress() },
-        SizeInBytes : (std::mem::size_of_val(&tmp_resource) * (&tmp_resource.len() - 1 )) as u32,
+        SizeInBytes : (tmp_resource.len() * mem::size_of::<Vertex>()) as u32,
         StrideInBytes : std::mem::size_of_val(&tmp_resource[0]) as u32,
     };
 
@@ -398,7 +398,7 @@ pub fn create_index_buffer_resources(device: *mut d3d12::ID3D12Device, comitted_
     let buffer_view = d3d12::D3D12_INDEX_BUFFER_VIEW {
         BufferLocation : unsafe { buffer.as_ref().unwrap().GetGPUVirtualAddress() },
         Format : dxgiformat::DXGI_FORMAT_R16_UINT,
-        SizeInBytes : (std::mem::size_of_val(&tmp_resource) * (&tmp_resource.len() - 1 )) as u32,
+        SizeInBytes : (tmp_resource.len() * mem::size_of::<u16>()) as u32,
     };
 
     BufferResources {
@@ -409,13 +409,15 @@ pub fn create_index_buffer_resources(device: *mut d3d12::ID3D12Device, comitted_
 
 pub fn create_texture_buffer_from_file(path: &str) -> Image {
 
-    let mut img = image::open(get_relative_file_path(path)).unwrap();
+    let img = image::open(get_relative_file_path(path)).unwrap();
 
     let color_type = img.color();
 
     let bits_per_pixel = match color_type {
 
         image::ColorType::Rgb8 => mem::size_of::<image::Rgba<u8>>(),
+
+        image::ColorType::Rgba8 => mem::size_of::<image::Rgba<u8>>(),
 
         _ => mem::size_of::<image::Rgb<u8>>()
     };
@@ -428,10 +430,17 @@ pub fn create_texture_buffer_from_file(path: &str) -> Image {
 
         image::ColorType::Rgb8 => dxgiformat::DXGI_FORMAT_R8G8B8A8_UNORM,
 
+        image::ColorType::Rgba8 => dxgiformat::DXGI_FORMAT_R8G8B8A8_UNORM,
+
         _ => dxgiformat::DXGI_FORMAT_R8G8B8A8_UNORM
     };
 
-    let alignmented_row_pitch = (row_pitch as u32 + d3d12::D3D12_TEXTURE_DATA_PITCH_ALIGNMENT) - (row_pitch as u32 % d3d12::D3D12_TEXTURE_DATA_PITCH_ALIGNMENT);
+
+    let alignmented_row_pitch = if img.width() % d3d12::D3D12_TEXTURE_DATA_PITCH_ALIGNMENT == 0 {
+        row_pitch as u32
+    } else {
+        (row_pitch as u32 + d3d12::D3D12_TEXTURE_DATA_PITCH_ALIGNMENT) - (row_pitch as u32 % d3d12::D3D12_TEXTURE_DATA_PITCH_ALIGNMENT)
+    };
 
     let alignmented_slice_pitch = alignmented_row_pitch * img.height();
 
@@ -686,16 +695,28 @@ pub fn get_pointer_of_self_object<T>(object: &mut T) -> *mut *mut ctypes::c_void
     void_ptr
 }
 
+
 // #[cfg(test)]
 // mod tests {
 //     use super::*;
 
+
 //     #[test]
 //     fn some_test() {
 
-//         let img = create_texture_buffer_from_file("assets\\images\\directx.png");
+//         let slice = vec![
+//             Vertex {
+//                 position: XMFLOAT3 { x: -0.4, y: -0.7, z: 0.0 },
+//                 uv: XMFLOAT2 { x: 0.0, y: 1.0 },
+//             },
+//             Vertex {
+//                 position: XMFLOAT3 { x: -0.4, y: -0.7, z: 0.0 },
+//                 uv: XMFLOAT2 { x: 0.0, y: 1.0 },
+//             },
+//         ];
 
-//         println!("{:?}", img);
+
+//         println!("{:?}", slice.len() * mem::size_of::<Vertex>());
 
 //     }
 // }

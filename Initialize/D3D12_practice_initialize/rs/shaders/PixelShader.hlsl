@@ -6,5 +6,5 @@ float4 BasicPS(Output input): SV_TARGET {
 
 /// debug uv
 // float4 BasicPS(Output input): SV_TARGET {
-// 	return float4(input.uv, 1, 1);
+// 	return float4(input.uv, input.uv);
 // }

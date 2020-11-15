@@ -300,7 +300,7 @@ fn main() {
     let scissor_rect = lib::set_scissor_rect(WINDOW_WIDTH, WINDOW_HEIGHT);
 
     // create intermediate texture buffer for uploade resource
-    let texture = lib::create_texture_buffer_from_file("assets\\images\\test.png");
+    let mut texture = lib::create_texture_buffer_from_file("assets\\images\\ultimate.png");
 
     let texture_buffer_heap_prop = D3D12_HEAP_PROPERTIES {
         Type : D3D12_HEAP_TYPE_UPLOAD,
@@ -383,9 +383,17 @@ fn main() {
         Map(0, std::ptr::null_mut(), lib::get_pointer_of_self_object(&mut buffer_map))
     };
 
-
     unsafe {
-        buffer_map.copy_from_nonoverlapping(texture.raw_pointer.as_ptr().cast::<Vec<u8>>(), texture.alignmented_row_pitch as usize * 10);
+        let mut tmp_pointer = texture.raw_pointer.as_mut_ptr().cast::<Vec<u8>>();
+
+        for (_, _) in (0..10).into_iter().enumerate() {
+
+            buffer_map.copy_from(tmp_pointer, texture.alignmented_row_pitch as usize);
+
+            tmp_pointer = tmp_pointer.offset(texture.row_pitch as isize);
+
+            buffer_map = buffer_map.offset(texture.alignmented_row_pitch as isize);
+        }
     };
 
     unsafe {
@@ -406,7 +414,7 @@ fn main() {
                 Width: texture.width as u32,
                 Height: texture.height,
                 Depth: 1,
-                RowPitch: texture.alignmented_row_pitch,
+                RowPitch: texture.alignmented_row_pitch as u32,
             }
     };
 
@@ -515,7 +523,7 @@ fn main() {
     };
 
 
-    let clear_color: [FLOAT; 4] = [ 0.0, 0.0, 1.0, 1.0 ];
+    let clear_color: [FLOAT; 4] = [ 0.0, 1.0, 1.0, 1.0 ];
 
     let mut msg = unsafe { mem::MaybeUninit::uninit().assume_init() };
 
