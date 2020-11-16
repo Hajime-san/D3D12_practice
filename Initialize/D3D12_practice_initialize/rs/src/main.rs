@@ -20,8 +20,6 @@ use winapi::{
     ctypes,
 };
 
-use image::{ GenericImageView };
-
 use std::ptr;
 use std::mem;
 use std::ffi::CString;
@@ -300,7 +298,7 @@ fn main() {
     let scissor_rect = lib::set_scissor_rect(WINDOW_WIDTH, WINDOW_HEIGHT);
 
     // create intermediate texture buffer for uploade resource
-    let mut texture = lib::create_texture_buffer_from_file("assets\\images\\ultimate.png");
+    let mut texture = lib::get_texture_data_from_file("assets\\images\\ultimate.png");
 
     let texture_buffer_heap_prop = D3D12_HEAP_PROPERTIES {
         Type : D3D12_HEAP_TYPE_UPLOAD,
@@ -382,6 +380,7 @@ fn main() {
         intermediate_buffer.as_ref().unwrap().
         Map(0, std::ptr::null_mut(), lib::get_pointer_of_interface(&mut buffer_map))
     };
+
 
     unsafe {
         let mut tmp_pointer = texture.raw_pointer.as_mut_ptr().cast::<u8>();

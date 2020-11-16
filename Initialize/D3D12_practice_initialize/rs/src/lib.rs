@@ -1,22 +1,15 @@
 use winapi::{
     um::{
-        winuser,
-        wingdi,
         d3d12,
         d3d12sdklayers,
         d3dcommon,
         d3dcompiler,
         unknwnbase,
-        winbase,
-        synchapi,
-        handleapi,
     },
     shared::{
         windef,
         minwindef,
         winerror,
-        ntdef,
-        guiddef::*,
         dxgi,
         dxgi1_2,
         dxgi1_3,
@@ -37,7 +30,7 @@ use std::str;
 use std::path;
 use std::ffi::CString;
 use std::env;
-use image::{ GenericImageView, DynamicImage };
+use image::{ GenericImageView };
 
 #[derive(Debug, Clone, Copy)]
 pub struct XMFLOAT3 {
@@ -347,7 +340,7 @@ fn create_buffer_map<T>(device: *mut d3d12::ID3D12Device, comitted_resource: Com
     };
 
     // buffer map
-    let mut buffer_map = std::ptr::null_mut::<Vec<T>>();
+    let mut buffer_map = std::ptr::null_mut::<T>();
 
     // map buffer to GPU
     result = unsafe {
@@ -355,7 +348,7 @@ fn create_buffer_map<T>(device: *mut d3d12::ID3D12Device, comitted_resource: Com
         Map(0, std::ptr::null_mut(), get_pointer_of_interface(&mut buffer_map))
     };
     unsafe {
-        buffer_map.copy_from_nonoverlapping(resource.as_ptr().cast::<Vec<T>>(), std::mem::size_of_val(&resource) )
+        buffer_map.copy_from_nonoverlapping(resource.as_ptr().cast::<T>(), std::mem::size_of_val(&resource) * &resource.len() )
     };
     unsafe {
         buffer.as_ref().unwrap().
@@ -407,13 +400,13 @@ pub fn create_index_buffer_resources(device: *mut d3d12::ID3D12Device, comitted_
     }
 }
 
-pub fn create_texture_buffer_from_file(path: &str) -> Image {
+pub fn get_texture_data_from_file(path: &str) -> Image {
 
     let img = image::open(get_relative_file_path(path)).unwrap();
 
     let color_type = img.color();
 
-    let bits_per_pixel = match color_type {
+    let bytes_per_pixel = match color_type {
 
         image::ColorType::Rgb8 => mem::size_of::<image::Rgba<u8>>(),
 
@@ -422,7 +415,7 @@ pub fn create_texture_buffer_from_file(path: &str) -> Image {
         _ => mem::size_of::<image::Rgb<u8>>()
     };
 
-    let row_pitch = bits_per_pixel * (img.width() as usize);
+    let row_pitch = bytes_per_pixel * (img.width() as usize);
 
     let slice_pitch = row_pitch * (img.height() as usize);
 
@@ -444,6 +437,15 @@ pub fn create_texture_buffer_from_file(path: &str) -> Image {
 
     let alignmented_slice_pitch = alignmented_row_pitch * img.height();
 
+    let raw_pointer = match color_type {
+
+        image::ColorType::Rgb8 => img.to_rgba().into_raw(),
+
+        image::ColorType::Rgba8 => img.to_bytes(),
+
+        _ => img.to_bytes()
+    };
+
     Image {
         width: img.width() as u64,
         height: img.height() as u32,
@@ -452,7 +454,7 @@ pub fn create_texture_buffer_from_file(path: &str) -> Image {
         slice_pitch: slice_pitch,
         alignmented_row_pitch: alignmented_row_pitch,
         alignmented_slice_pitch: alignmented_slice_pitch as u64,
-        raw_pointer: img.to_bytes(),
+        raw_pointer: raw_pointer,
     }
 }
 
@@ -696,27 +698,11 @@ pub fn get_pointer_of_interface<T>(object: &mut T) -> *mut *mut ctypes::c_void {
 }
 
 
-// #[cfg(test)]
-// mod tests {
-//     use super::*;
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-
-//     #[test]
-//     fn some_test() {
-
-//         let slice = vec![
-//             Vertex {
-//                 position: XMFLOAT3 { x: -0.4, y: -0.7, z: 0.0 },
-//                 uv: XMFLOAT2 { x: 0.0, y: 1.0 },
-//             },
-//             Vertex {
-//                 position: XMFLOAT3 { x: -0.4, y: -0.7, z: 0.0 },
-//                 uv: XMFLOAT2 { x: 0.0, y: 1.0 },
-//             },
-//         ];
-
-
-//         println!("{:?}", slice.len() * mem::size_of::<Vertex>());
-
-//     }
-// }
+    #[test]
+    fn some_test() {
+    }
+}
